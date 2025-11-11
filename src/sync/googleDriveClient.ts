@@ -1,15 +1,8 @@
 import { db } from '../db/database'
-import type {
-  Customer,
-  Product,
-  PurchaseOrder,
-  PurchaseOrderItem,
-  SalesOrder,
-  SalesOrderItem,
-  SyncRecord,
-} from '../db/schema'
+import type { Customer, Product, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, SyncRecord } from '../db/schema'
 import { nowIso } from '../db/utils'
 import { loadSecureToken, saveSecureToken } from '../security/secureStorage'
+import { snapshotToSqliteZip, sqliteZipToSnapshot } from './sqliteAdapter'
 
 export interface SyncSnapshot {
   exportedAt: string
@@ -24,7 +17,7 @@ export interface SyncSnapshot {
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
-const SYNC_FILE_NAME = 'bookstore-erp-sync.json'
+const SYNC_FILE_NAME = 'bookstore-erp.sqlite.zip'
 const FOLDER_STORAGE_KEY = 'driveFolderId'
 
 const getDesiredFolderName = () => import.meta.env.VITE_DRIVE_APP_FOLDER_NAME ?? 'BookStoreERP'
@@ -95,25 +88,28 @@ const getSyncFile = async (token: string, folderId: string): Promise<DriveFileRe
   return data.files.at(0) ?? null
 }
 
-const createSyncFile = async (token: string, folderId: string, snapshot: SyncSnapshot): Promise<DriveFileResult> => {
+const createSyncFile = async (token: string, folderId: string, archive: Uint8Array): Promise<DriveFileResult> => {
   const metadata = {
     name: SYNC_FILE_NAME,
-    mimeType: 'application/json',
+    mimeType: 'application/zip',
     parents: [folderId],
   }
 
   const boundary = '-------314159265358979323846'
   const delimiter = `\r\n--${boundary}\r\n`
   const closeDelimiter = `\r\n--${boundary}--`
+  const archiveCopy = new Uint8Array(archive)
+  const archiveBlob = new Blob([archiveCopy.buffer.slice(0)], { type: 'application/zip' })
 
-  const body =
-    delimiter +
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-    JSON.stringify(metadata) +
-    delimiter +
-    'Content-Type: application/json\r\n\r\n' +
-    JSON.stringify(snapshot, null, 2) +
-    closeDelimiter
+  const body = new Blob([
+    delimiter,
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+    JSON.stringify(metadata),
+    delimiter,
+    'Content-Type: application/zip\r\n\r\n',
+    archiveBlob,
+    closeDelimiter,
+  ])
 
   const res = await driveFetch(token, `${DRIVE_UPLOAD_BASE}/files?uploadType=multipart`, {
     method: 'POST',
@@ -126,13 +122,15 @@ const createSyncFile = async (token: string, folderId: string, snapshot: SyncSna
   return data
 }
 
-const updateSyncFile = async (token: string, fileId: string, snapshot: SyncSnapshot): Promise<DriveFileResult> => {
+const updateSyncFile = async (token: string, fileId: string, archive: Uint8Array): Promise<DriveFileResult> => {
+  const archiveCopy = new Uint8Array(archive)
+  const archiveBlob = new Blob([archiveCopy.buffer.slice(0)], { type: 'application/zip' })
   const res = await driveFetch(token, `${DRIVE_UPLOAD_BASE}/files/${fileId}?uploadType=media`, {
     method: 'PATCH',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/zip',
     },
-    body: JSON.stringify(snapshot, null, 2),
+    body: archiveBlob,
   })
   const data = (await res.json()) as DriveFileResult
   return data
@@ -168,20 +166,21 @@ export const downloadSnapshotFromDrive = async (token: string): Promise<SyncSnap
   if (!syncFile) return null
 
   const res = await driveFetch(token, `${DRIVE_API_BASE}/files/${syncFile.id}?alt=media`, {
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/octet-stream' },
   })
-
-  return (await res.json()) as SyncSnapshot
+  const archive = new Uint8Array(await res.arrayBuffer())
+  return sqliteZipToSnapshot(archive)
 }
 
 export const uploadSnapshotToDrive = async (token: string, snapshot: SyncSnapshot) => {
   const folderId = await ensureFolder(token)
   const existingFile = await getSyncFile(token, folderId)
+  const archive = await snapshotToSqliteZip(snapshot)
 
   if (existingFile) {
-    return updateSyncFile(token, existingFile.id, snapshot)
+    return updateSyncFile(token, existingFile.id, archive)
   }
 
-  return createSyncFile(token, folderId, snapshot)
+  return createSyncFile(token, folderId, archive)
 }
 

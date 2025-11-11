@@ -25,6 +25,7 @@
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-react": "^5.1.0",
     "autoprefixer": "^10.4.21",
     "electron": "^39.1.1",
@@ -37,12 +38,14 @@
     "@tanstack/react-query": "^5.90.7",
     "dexie": "^4.2.1",
     "dexie-react-hooks": "^4.2.0",
+    "fflate": "^0.8.2",
     "firebase": "^12.5.0",
     "keytar": "^7.9.0",
     "nanoid": "^5.1.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.5",
+    "sql.js": "^1.13.0",
     "zustand": "^5.0.8"
   }
 }

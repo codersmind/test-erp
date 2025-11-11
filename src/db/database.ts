@@ -22,6 +22,16 @@ export class ErpDatabase extends Dexie {
   constructor() {
     super('erp_offline_db')
 
+    this.version(2).stores({
+      customers: 'id, tenantId, name, updatedAt, isArchived',
+      products: 'id, tenantId, sku, barcode, title, updatedAt, isArchived',
+      salesOrders: 'id, tenantId, customerId, status, issuedDate, updatedAt',
+      salesOrderItems: 'id, orderId, productId',
+      purchaseOrders: 'id, tenantId, supplierName, status, issuedDate, updatedAt',
+      purchaseOrderItems: 'id, orderId, productId',
+      syncQueue: 'id, entity, entityId, timestamp, syncedAt',
+    })
+
     this.version(1).stores({
       customers: 'id, tenantId, name, updatedAt, isArchived',
       products: 'id, tenantId, sku, barcode, updatedAt, isArchived',
@@ -30,6 +40,12 @@ export class ErpDatabase extends Dexie {
       purchaseOrders: 'id, tenantId, supplierName, status, issuedDate, updatedAt',
       purchaseOrderItems: 'id, orderId, productId',
       syncQueue: 'id, entity, entityId, timestamp, syncedAt',
+    }).upgrade(async (transaction) => {
+      await transaction.table('products').toCollection().modify((product) => {
+        if (product.title === undefined) {
+          product.title = product.sku ?? 'Untitled product'
+        }
+      })
     })
   }
 }

@@ -86,7 +86,7 @@ export const PurchaseOrdersPage = () => {
                   </p>
                 </div>
                 <span className="text-xs text-slate-400">
-                  {new Date(order.updatedAt).toLocaleDateString(undefined, {
+                  {new Date(order.updatedAt).toLocaleString(undefined, {
                     dateStyle: 'medium',
                     timeStyle: 'short',
                   })}
