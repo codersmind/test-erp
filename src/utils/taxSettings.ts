@@ -20,7 +20,6 @@ export interface TaxSettings {
 }
 
 const TAX_SETTINGS_KEY = 'erp_tax_settings'
-const STATE_TAX_KEY = 'erp_state_tax_configs'
 
 // Common Indian states (can be customized)
 export const INDIAN_STATES = [

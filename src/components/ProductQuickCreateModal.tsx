@@ -45,6 +45,8 @@ export const ProductQuickCreateModal = ({
         mrp: Number.parseFloat(form.mrp) || 0,
         cost: Number.parseFloat(form.cost) || 0,
         unitId: defaultUnitId || undefined,
+        defaultDiscount: 0,
+        defaultDiscountType: 'amount',
         description: undefined,
         reorderLevel: undefined,
       })
