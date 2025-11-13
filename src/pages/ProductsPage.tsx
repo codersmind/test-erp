@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useFormik } from 'formik'
+import { Formik } from 'formik'
 
 import { useAdjustProductStock, useCreateProduct } from '../hooks/useProducts'
 import { useProductsPaginated } from '../hooks/useProductsPaginated'
@@ -11,6 +11,12 @@ import type { Product } from '../db/schema'
 import { getAllUnits, type Unit } from '../utils/unitSettings'
 import { productSchema, type ProductFormValues } from '../utils/validationSchemas'
 import { useSettingsStore } from '../store/useSettingsStore'
+
+// Component to handle barcode scanner inside Formik context
+const BarcodeScannerHandler = ({ onScan }: { onScan: (code: string) => void }) => {
+  useBarcodeScanner(onScan)
+  return null
+}
 
 const PAGE_SIZE = 20
 
@@ -34,48 +40,7 @@ export const ProductsPage = () => {
     loadUnits()
   }, [loadSettings])
 
-  const formik = useFormik<ProductFormValues>({
-    enableReinitialize: true,
-    initialValues: {
-      title: '',
-      sku: '',
-      barcode: '',
-      mrp: 0,
-      salePrice: null,
-      cost: 0,
-      defaultDiscount: 0,
-      defaultDiscountType: 'amount',
-      unitId: unitSettings?.defaultUnitId || null,
-      description: null,
-      reorderLevel: null,
-    },
-    validationSchema: productSchema,
-    onSubmit: async (values, { resetForm }) => {
-      await createProduct.mutateAsync({
-        title: values.title,
-        sku: values.sku || `SKU-${Date.now()}`,
-        barcode: values.barcode || undefined,
-        mrp: values.mrp,
-        salePrice: values.salePrice ?? undefined,
-        cost: values.cost,
-        defaultDiscount: values.defaultDiscount ?? 0,
-        defaultDiscountType: values.defaultDiscountType,
-        unitId: values.unitId || unitSettings?.defaultUnitId || undefined,
-        description: values.description || undefined,
-        reorderLevel: values.reorderLevel ?? undefined,
-      })
-      resetForm({
-        values: {
-          ...formik.initialValues,
-          unitId: unitSettings?.defaultUnitId || null,
-        },
-      })
-    },
-  })
-
-  useBarcodeScanner((code) => {
-    formik.setFieldValue('barcode', code)
-  })
+  // Barcode scanner will be set up inside Formik render function
 
   const handleStockAdjust = async (id: string, delta: number) => {
     if (!delta) return
@@ -100,7 +65,58 @@ export const ProductsPage = () => {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <h2 className="text-lg font-semibold">Add product</h2>
-        <form onSubmit={formik.handleSubmit} className="mt-4 space-y-4">
+        <Formik
+          enableReinitialize
+          initialValues={{
+            title: '',
+            sku: '',
+            barcode: '',
+            mrp: 0,
+            salePrice: null,
+            cost: 0,
+            defaultDiscount: 0,
+            defaultDiscountType: 'amount' as const,
+            unitId: unitSettings?.defaultUnitId || null,
+            description: null,
+            reorderLevel: null,
+          }}
+          validationSchema={productSchema}
+          onSubmit={async (values, { resetForm }) => {
+            await createProduct.mutateAsync({
+              title: values.title,
+              sku: values.sku || `SKU-${Date.now()}`,
+              barcode: values.barcode || undefined,
+              mrp: values.mrp,
+              salePrice: values.salePrice ?? undefined,
+              cost: values.cost,
+              defaultDiscount: values.defaultDiscount ?? 0,
+              defaultDiscountType: values.defaultDiscountType,
+              unitId: values.unitId || unitSettings?.defaultUnitId || undefined,
+              description: values.description || undefined,
+              reorderLevel: values.reorderLevel ?? undefined,
+            })
+            resetForm({
+              values: {
+                title: '',
+                sku: '',
+                barcode: '',
+                mrp: 0,
+                salePrice: null,
+                cost: 0,
+                defaultDiscount: 0,
+                defaultDiscountType: 'amount' as const,
+                unitId: unitSettings?.defaultUnitId || null,
+                description: null,
+                reorderLevel: null,
+              },
+            })
+          }}
+        >
+          {({ handleSubmit, isSubmitting, setFieldValue }) => {
+            return (
+              <>
+                <BarcodeScannerHandler onScan={(code) => setFieldValue('barcode', code)} />
+                <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <FormField
               name="title"
@@ -187,13 +203,17 @@ export const ProductsPage = () => {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={createProduct.isPending || formik.isSubmitting}
+              disabled={createProduct.isPending || isSubmitting}
               className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-auto"
             >
-              {createProduct.isPending || formik.isSubmitting ? 'Saving…' : 'Save product'}
+              {createProduct.isPending || isSubmitting ? 'Saving…' : 'Save product'}
             </button>
           </div>
         </form>
+              </>
+            )
+          }}
+        </Formik>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">

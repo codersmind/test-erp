@@ -38,11 +38,15 @@ export const FormField = (props: FormFieldProps) => {
   } bg-white dark:bg-slate-900 dark:text-slate-50`
 
   const renderField = () => {
+    // Convert null to empty string for input/textarea, undefined for select
+    const fieldValue = field.value === null ? (as === 'select' ? undefined : '') : field.value
+
     if (as === 'select') {
       return (
         <select
           id={fieldId}
           {...field}
+          value={fieldValue}
           {...(fieldProps as SelectFieldProps)}
           className={`${baseInputClasses} ${className || ''}`}
         >
@@ -56,6 +60,7 @@ export const FormField = (props: FormFieldProps) => {
         <textarea
           id={fieldId}
           {...field}
+          value={fieldValue}
           {...(fieldProps as TextareaFieldProps)}
           className={`${baseInputClasses} ${className || ''}`}
         />
@@ -66,6 +71,7 @@ export const FormField = (props: FormFieldProps) => {
       <input
         id={fieldId}
         {...field}
+        value={fieldValue}
         {...(fieldProps as InputFieldProps)}
         className={`${baseInputClasses} ${className || ''}`}
       />

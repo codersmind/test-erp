@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useCreateSalesOrder } from '../hooks/useSalesOrders'
@@ -12,6 +12,7 @@ import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
 import { getTaxSettings, calculateTax, COMMON_GST_RATES, INDIAN_STATES, type TaxSettings } from '../utils/taxSettings'
 import { getProduct, getCustomer } from '../db/localDataService'
+import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import type { Customer, Product } from '../db/schema'
 
 interface LineItem {
@@ -42,6 +43,8 @@ export const SalesOrdersPage = () => {
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
+  const isSearchingRef = useRef<Record<number, boolean>>({})
+  const originalProductIdRef = useRef<Record<number, string>>({})
   const createSalesOrderMutation = useCreateSalesOrder()
 
   // Load tax settings and customer state on mount
@@ -86,16 +89,22 @@ export const SalesOrdersPage = () => {
   )
 
   const handleProductSelect = async (index: number, productId: string) => {
+    // Clear searching flag and original product ref when product is selected
+    isSearchingRef.current[index] = false
+    delete originalProductIdRef.current[index]
+    
+    // If productId is empty, clear the line item
     if (!productId) {
-      setSelectedProductIndex(index)
-      setShowProductModal(true)
+      updateLineItem(index, { productId: '', unitPrice: 0, discount: 0 })
       return
     }
+    
+    // Load and set the product
     const product = await getProduct(productId)
     if (product) {
       // Use salePrice if available, otherwise fallback to price
       const unitPrice = product.salePrice ?? product.price ?? 0
-      updateLineItem(index, { productId, unitPrice })
+      updateLineItem(index, { productId, unitPrice, discount: 0 })
     }
   }
 
@@ -113,11 +122,96 @@ export const SalesOrdersPage = () => {
     }))
   }
 
+  // Handle barcode scanning to add products
+  const handleBarcodeScan = async (barcode: string) => {
+    if (!barcode.trim()) return
+
+    // Find product by barcode
+    const product = await db.products
+      .filter((p) => p.barcode?.toLowerCase() === barcode.toLowerCase() && !p.isArchived)
+      .first()
+
+    if (!product) {
+      // Product not found - could show a notification or open create modal
+      console.warn(`Product with barcode "${barcode}" not found`)
+      return
+    }
+
+    // Check if product already exists in line items
+    const existingItemIndex = form.lineItems.findIndex((item) => item.productId === product.id)
+
+    if (existingItemIndex >= 0) {
+      // Product already in cart - increment quantity
+      setForm((prev) => {
+        const updatedItems = prev.lineItems.map((item, i) =>
+          i === existingItemIndex ? { ...item, quantity: item.quantity + 1 } : item,
+        )
+        // Ensure there's always an empty item for next scan
+        const hasEmptyItem = updatedItems.some((item) => !item.productId)
+        return {
+          ...prev,
+          lineItems: hasEmptyItem
+            ? updatedItems
+            : [...updatedItems, { productId: '', quantity: 1, unitPrice: 0, discount: 0 }],
+        }
+      })
+    } else {
+      // Add new line item with the product
+      const unitPrice = product.salePrice ?? product.price ?? 0
+      const newItem: LineItem = {
+        productId: product.id,
+        quantity: 1,
+        unitPrice,
+        discount: 0,
+      }
+
+      setForm((prev) => {
+        // Find the first empty line item or add a new one
+        const emptyItemIndex = prev.lineItems.findIndex((item) => !item.productId)
+        let updatedItems: LineItem[]
+
+        if (emptyItemIndex >= 0) {
+          // Replace empty item
+          updatedItems = prev.lineItems.map((item, i) => (i === emptyItemIndex ? newItem : item))
+        } else {
+          // Add new line item
+          updatedItems = [...prev.lineItems, newItem]
+        }
+
+        // Always ensure there's an empty item at the end for next scan
+        const hasEmptyItem = updatedItems.some((item) => !item.productId)
+        return {
+          ...prev,
+          lineItems: hasEmptyItem
+            ? updatedItems
+            : [...updatedItems, { productId: '', quantity: 1, unitPrice: 0, discount: 0 }],
+        }
+      })
+    }
+  }
+
+  // Set up barcode scanner
+  useBarcodeScanner(handleBarcodeScan)
+
   const removeLineItem = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      lineItems: prev.lineItems.filter((_, i) => i !== index),
-    }))
+    setForm((prev) => {
+      // Remove the item at the specified index
+      const updatedItems = prev.lineItems.filter((_, i) => i !== index)
+      
+      // If no items remain, add one empty item
+      if (updatedItems.length === 0) {
+        return {
+          ...prev,
+          lineItems: [{ productId: '', quantity: 1, unitPrice: 0, discount: 0 }],
+        }
+      }
+      
+      // Otherwise, just remove the item (don't force an empty item)
+      return {
+        ...prev,
+        lineItems: updatedItems,
+      }
+    })
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -240,6 +334,25 @@ export const SalesOrdersPage = () => {
                       <LazyProductPicker
                         value={item.productId}
                         onChange={(productId) => handleProductSelect(index, productId)}
+                        onSearchStart={() => {
+                          // Store the original productId before clearing it
+                          // This helps us know if user was changing an existing product
+                          const currentItem = form.lineItems[index]
+                          if (currentItem?.productId) {
+                            originalProductIdRef.current[index] = currentItem.productId
+                          }
+                          // Update ref immediately (synchronously) for instant check
+                          // This happens BEFORE onChange('') is called, preventing modal from opening
+                          isSearchingRef.current[index] = true
+                        }}
+                        onSearchEnd={() => {
+                          isSearchingRef.current[index] = false
+                          // Clear original product ref after search ends
+                          // Keep it during search in case user cancels
+                          setTimeout(() => {
+                            delete originalProductIdRef.current[index]
+                          }, 100)
+                        }}
                         onQuickCreate={() => {
                           setSelectedProductIndex(index)
                           setShowProductModal(true)
@@ -298,228 +411,262 @@ export const SalesOrdersPage = () => {
                     </div>
                   </div>
                   <div className="flex items-end sm:col-span-1">
-                    {form.lineItems.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeLineItem(index)}
-                        className="w-full rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
-                      >
-                        ×
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeLineItem(index)}
+                      className="w-full rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                      title="Remove item"
+                    >
+                      ×
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">Subtotal</span>
-              <span className="font-medium">{subtotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
-            </div>
-
-            {/* Order-level Discount */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-600 dark:text-slate-400">Order Discount</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.orderDiscount || ''}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, orderDiscount: Number.parseFloat(event.target.value) || 0 }))
-                  }
-                  className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  placeholder="0.00"
-                />
-                <select
-                  value={form.orderDiscountType}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, orderDiscountType: event.target.value as 'amount' | 'percentage' }))
-                  }
-                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                >
-                  <option value="amount">Amount</option>
-                  <option value="percentage">%</option>
-                </select>
-              </div>
-              <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-              </span>
-            </div>
-            {orderDiscountAmount > 0 && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600 dark:text-slate-400">Subtotal after discount</span>
-                <span className="font-medium">{subtotalAfterDiscount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
-              </div>
-            )}
-
-            {/* State Selection */}
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-slate-600 dark:text-slate-300">State</label>
-              <select
-                value={form.selectedState || ''}
-                onChange={(e) => {
-                  const selectedState = e.target.value || undefined
-                  setForm((prev) => {
-                    const newForm = { ...prev, selectedState }
-                    // Load state-specific tax rates if available
-                    if (selectedState && prev.stateRates?.[selectedState]) {
-                      const stateConfig = prev.stateRates[selectedState]
-                      return {
-                        ...newForm,
-                        type: stateConfig.type,
-                        gstRate: stateConfig.gstRate,
-                        cgstRate: stateConfig.cgstRate,
-                        sgstRate: stateConfig.sgstRate,
-                      }
-                    }
-                    return newForm
-                  })
-                }}
-                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              >
-                <option value="">Default (No state-specific rate)</option>
-                {INDIAN_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-              {form.selectedState && form.stateRates?.[form.selectedState] && (
-                <span className="text-xs text-blue-600 dark:text-blue-400">State rate applied</span>
-              )}
-            </div>
-
-            {/* Tax Type Selection */}
-            <div className="flex items-center gap-4">
-              <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Tax Type</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const totalRate = form.type === 'cgst_sgst' ? form.cgstRate + form.sgstRate : form.gstRate
-                    setForm((prev) => ({ ...prev, type: 'gst', gstRate: totalRate }))
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                    form.type === 'gst'
-                      ? 'bg-blue-600 text-white'
-                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  GST
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const totalRate = form.type === 'gst' ? form.gstRate : form.cgstRate + form.sgstRate
-                    const halfRate = totalRate / 2
-                    setForm((prev) => ({
-                      ...prev,
-                      type: 'cgst_sgst',
-                      cgstRate: halfRate,
-                      sgstRate: halfRate,
-                    }))
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                    form.type === 'cgst_sgst'
-                      ? 'bg-blue-600 text-white'
-                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  CGST + SGST
-                </button>
-              </div>
-            </div>
-
-            {/* Tax Rate Inputs */}
-            {form.type === 'gst' ? (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-slate-600 dark:text-slate-400">GST Rate (%)</label>
+          {/* Professional Tax Summary Section - Zoho Style */}
+          <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-800">
+            {/* Tax Configuration - Collapsible */}
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-medium text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100">
+                Tax Configuration
+              </summary>
+              <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                {/* State Selection */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">State</label>
                   <select
-                    value={form.gstRate}
-                    onChange={(e) => setForm((prev) => ({ ...prev, gstRate: Number.parseFloat(e.target.value) }))}
-                    className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    value={form.selectedState || ''}
+                    onChange={(e) => {
+                      const selectedState = e.target.value || undefined
+                      setForm((prev) => {
+                        const newForm = { ...prev, selectedState }
+                        if (selectedState && prev.stateRates?.[selectedState]) {
+                          const stateConfig = prev.stateRates[selectedState]
+                          return {
+                            ...newForm,
+                            type: stateConfig.type,
+                            gstRate: stateConfig.gstRate,
+                            cgstRate: stateConfig.cgstRate,
+                            sgstRate: stateConfig.sgstRate,
+                          }
+                        }
+                        return newForm
+                      })
+                    }}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   >
-                    {COMMON_GST_RATES.map((rate) => (
-                      <option key={rate} value={rate}>
-                        {rate}%
+                    <option value="">Default (No state-specific rate)</option>
+                    {INDIAN_STATES.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={form.gstRate}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, gstRate: Number.parseFloat(event.target.value) || 0 }))
-                    }
-                    className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    placeholder="Custom"
-                  />
                 </div>
-                <span className="text-sm font-medium">
-                  GST: {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-slate-600 dark:text-slate-400">CGST Rate (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      step="0.01"
-                      value={form.cgstRate}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, cgstRate: Number.parseFloat(event.target.value) || 0 }))
-                      }
-                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    />
-                  </div>
-                  <span className="text-sm font-medium">
-                    CGST: {taxCalculation.cgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-slate-600 dark:text-slate-400">SGST Rate (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      step="0.01"
-                      value={form.sgstRate}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, sgstRate: Number.parseFloat(event.target.value) || 0 }))
-                      }
-                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    />
-                  </div>
-                  <span className="text-sm font-medium">
-                    SGST: {taxCalculation.sgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-end text-sm">
-                  <span className="font-medium">
-                    Total Tax: {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-                  </span>
-                </div>
-              </div>
-            )}
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-800">
-              <span className="text-lg font-semibold text-slate-900 dark:text-slate-50">Total</span>
-              <span className="text-xl font-bold text-slate-900 dark:text-slate-50">
-                {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-              </span>
+                {/* Tax Type Selection */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-2">Tax Type</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const totalRate = form.type === 'cgst_sgst' ? form.cgstRate + form.sgstRate : form.gstRate
+                        setForm((prev) => ({ ...prev, type: 'gst', gstRate: totalRate }))
+                      }}
+                      className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition ${
+                        form.type === 'gst'
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      GST
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const totalRate = form.type === 'gst' ? form.gstRate : form.cgstRate + form.sgstRate
+                        const halfRate = totalRate / 2
+                        setForm((prev) => ({
+                          ...prev,
+                          type: 'cgst_sgst',
+                          cgstRate: halfRate,
+                          sgstRate: halfRate,
+                        }))
+                      }}
+                      className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition ${
+                        form.type === 'cgst_sgst'
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      CGST + SGST
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tax Rate Inputs */}
+                {form.type === 'gst' ? (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">GST Rate (%)</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={form.gstRate}
+                        onChange={(e) => setForm((prev) => ({ ...prev, gstRate: Number.parseFloat(e.target.value) }))}
+                        className="w-32 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      >
+                        {COMMON_GST_RATES.map((rate) => (
+                          <option key={rate} value={rate}>
+                            {rate}%
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={form.gstRate}
+                        onChange={(event) =>
+                          setForm((prev) => ({ ...prev, gstRate: Number.parseFloat(event.target.value) || 0 }))
+                        }
+                        className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        placeholder="Custom rate"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">CGST Rate (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        step="0.01"
+                        value={form.cgstRate}
+                        onChange={(event) =>
+                          setForm((prev) => ({ ...prev, cgstRate: Number.parseFloat(event.target.value) || 0 }))
+                        }
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">SGST Rate (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        step="0.01"
+                        value={form.sgstRate}
+                        onChange={(event) =>
+                          setForm((prev) => ({ ...prev, sgstRate: Number.parseFloat(event.target.value) || 0 }))
+                        }
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
+
+            {/* Professional Summary - Zoho Style */}
+            <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <div className="space-y-3">
+                {/* Subtotal */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Subtotal</span>
+                  <span className="font-medium text-slate-900 dark:text-slate-50">
+                    {subtotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                  </span>
+                </div>
+
+                {/* Order Discount */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-slate-600 dark:text-slate-400">Discount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.orderDiscount || ''}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, orderDiscount: Number.parseFloat(event.target.value) || 0 }))
+                      }
+                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      placeholder="0.00"
+                    />
+                    <select
+                      value={form.orderDiscountType}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, orderDiscountType: event.target.value as 'amount' | 'percentage' }))
+                      }
+                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    >
+                      <option value="amount">$</option>
+                      <option value="percentage">%</option>
+                    </select>
+                  </div>
+                  {orderDiscountAmount > 0 && (
+                    <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                      -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                    </span>
+                  )}
+                </div>
+
+                {/* Subtotal After Discount */}
+                {orderDiscountAmount > 0 && (
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
+                    <span className="text-slate-600 dark:text-slate-400">Subtotal after discount</span>
+                    <span className="font-medium text-slate-900 dark:text-slate-50">
+                      {subtotalAfterDiscount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                    </span>
+                  </div>
+                )}
+
+                {/* Tax Breakdown */}
+                <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                  {form.type === 'gst' ? (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600 dark:text-slate-400">
+                        GST ({form.gstRate}%)
+                      </span>
+                      <span className="font-medium text-slate-900 dark:text-slate-50">
+                        {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-400">
+                          CGST ({form.cgstRate}%)
+                        </span>
+                        <span className="font-medium text-slate-900 dark:text-slate-50">
+                          {taxCalculation.cgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-400">
+                          SGST ({form.sgstRate}%)
+                        </span>
+                        <span className="font-medium text-slate-900 dark:text-slate-50">
+                          {taxCalculation.sgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Total */}
+                <div className="flex items-center justify-between border-t-2 border-slate-300 pt-3 dark:border-slate-600">
+                  <span className="text-base font-semibold text-slate-900 dark:text-slate-50">Total</span>
+                  <span className="text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import { useFormik } from 'formik'
+import { FormikProvider, useFormik } from 'formik'
 
 import { useCreateCustomer } from '../hooks/useCustomers'
 import { INDIAN_STATES } from '../utils/taxSettings'
@@ -65,60 +65,62 @@ export const CustomerQuickCreateModal = ({
             Quickly add a {type === 'customer' ? 'customer' : 'supplier'} to continue
           </p>
         </div>
-        <form onSubmit={formik.handleSubmit} className="p-6">
-          <div className="space-y-4">
-            <FormField
-              name="name"
-              label="Name"
-              required
-              autoFocus
-              placeholder="John Doe"
-            />
-            <FormField
-              name="email"
-              label="Email"
-              type="email"
-              placeholder="john@example.com"
-            />
-            <FormField
-              name="phone"
-              label="Phone"
-              type="tel"
-              placeholder="+1 234 567 8900"
-            />
-            <FormField
-              name="address"
-              label="Address"
-              as="textarea"
-              rows={2}
-              placeholder="123 Main St, City, State ZIP"
-            />
-            <FormField name="state" label="State" as="select">
-              <option value="">Select state (optional)</option>
-              {INDIAN_STATES.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </FormField>
-          </div>
-          <div className="mt-6 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createCustomer.isPending || formik.isSubmitting || !formik.values.name.trim()}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
-            >
-              {createCustomer.isPending || formik.isSubmitting ? 'Creating…' : 'Create & Continue'}
-            </button>
-          </div>
-        </form>
+        <FormikProvider value={formik}>
+          <form onSubmit={formik.handleSubmit} className="p-6">
+            <div className="space-y-4">
+              <FormField
+                name="name"
+                label="Name"
+                required
+                autoFocus
+                placeholder="John Doe"
+              />
+              <FormField
+                name="email"
+                label="Email"
+                type="email"
+                placeholder="john@example.com"
+              />
+              <FormField
+                name="phone"
+                label="Phone"
+                type="tel"
+                placeholder="+1 234 567 8900"
+              />
+              <FormField
+                name="address"
+                label="Address"
+                as="textarea"
+                rows={2}
+                placeholder="123 Main St, City, State ZIP"
+              />
+              <FormField name="state" label="State" as="select">
+                <option value="">Select state (optional)</option>
+                {INDIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </FormField>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createCustomer.isPending || formik.isSubmitting || !formik.values.name.trim()}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+              >
+                {createCustomer.isPending || formik.isSubmitting ? 'Creating…' : 'Create & Continue'}
+              </button>
+            </div>
+          </form>
+        </FormikProvider>
       </div>
     </div>
   )
