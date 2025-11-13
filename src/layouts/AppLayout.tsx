@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { ManualSyncButton } from '../components/ManualSyncButton'
 import { SyncStatus } from '../components/SyncStatus'
 import { ThemeToggleButton } from '../components/ThemeToggleButton'
+import { SettingsInitializer } from '../components/SettingsInitializer'
 import { useAuth } from '../auth/AuthProvider'
 import { BackgroundSyncManager } from '../sync/BackgroundSyncManager'
 
@@ -66,6 +67,7 @@ export const AppLayout = () => {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-50">
       <BackgroundSyncManager />
+      <SettingsInitializer />
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between">
           <div>

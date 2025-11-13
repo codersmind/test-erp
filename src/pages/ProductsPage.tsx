@@ -1,12 +1,16 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useFormik } from 'formik'
 
 import { useAdjustProductStock, useCreateProduct } from '../hooks/useProducts'
 import { useProductsPaginated } from '../hooks/useProductsPaginated'
 import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { ProductEditModal } from '../components/ProductEditModal'
 import { Pagination } from '../components/Pagination'
+import { FormField } from '../components/FormField'
 import type { Product } from '../db/schema'
-import { getAllUnits, getUnitSettings, type Unit } from '../utils/unitSettings'
+import { getAllUnits, type Unit } from '../utils/unitSettings'
+import { productSchema, type ProductFormValues } from '../utils/validationSchemas'
+import { useSettingsStore } from '../store/useSettingsStore'
 
 const PAGE_SIZE = 20
 
@@ -16,70 +20,62 @@ export const ProductsPage = () => {
   const { data: paginatedData, isPending } = useProductsPaginated(page, PAGE_SIZE, searchQuery)
   const createProduct = useCreateProduct()
   const adjustStock = useAdjustProductStock()
-  const [form, setForm] = useState({
-    title: '',
-    sku: '',
-    barcode: '',
-    mrp: '',
-    salePrice: '',
-    cost: '',
-    defaultDiscount: '',
-    defaultDiscountType: 'amount' as 'amount' | 'percentage',
-    description: '',
-    reorderLevel: '',
-    unitId: '',
-  })
   const [units, setUnits] = useState<Unit[]>([])
-  const [defaultUnitId, setDefaultUnitId] = useState<string>('piece')
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
+  const { unitSettings, loadSettings } = useSettingsStore()
 
   useEffect(() => {
+    loadSettings()
     const loadUnits = async () => {
       const allUnits = await getAllUnits()
       setUnits(allUnits)
-      const settings = await getUnitSettings()
-      setDefaultUnitId(settings.defaultUnitId)
     }
     loadUnits()
-  }, [])
+  }, [loadSettings])
 
-  useBarcodeScanner((code) => {
-    setForm((prev) => ({ ...prev, barcode: code }))
-  })
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!form.title.trim()) return
-
-    await createProduct.mutateAsync({
-      title: form.title.trim(),
-      sku: form.sku.trim() || `SKU-${Date.now()}`,
-      barcode: form.barcode.trim() || undefined,
-      mrp: Number.parseFloat(form.mrp) || 0,
-      salePrice: form.salePrice ? Number.parseFloat(form.salePrice) : undefined,
-      cost: Number.parseFloat(form.cost) || 0,
-      defaultDiscount: form.defaultDiscount ? Number.parseFloat(form.defaultDiscount) : 0,
-      defaultDiscountType: form.defaultDiscountType,
-      unitId: form.unitId || defaultUnitId || undefined,
-      description: form.description.trim() || undefined,
-      reorderLevel: form.reorderLevel ? Number.parseInt(form.reorderLevel) : undefined,
-    })
-
-    setForm({
+  const formik = useFormik<ProductFormValues>({
+    enableReinitialize: true,
+    initialValues: {
       title: '',
       sku: '',
       barcode: '',
-      mrp: '',
-      salePrice: '',
-      cost: '',
-      defaultDiscount: '',
+      mrp: 0,
+      salePrice: null,
+      cost: 0,
+      defaultDiscount: 0,
       defaultDiscountType: 'amount',
-      description: '',
-      reorderLevel: '',
-      unitId: '',
-    })
-  }
+      unitId: unitSettings?.defaultUnitId || null,
+      description: null,
+      reorderLevel: null,
+    },
+    validationSchema: productSchema,
+    onSubmit: async (values, { resetForm }) => {
+      await createProduct.mutateAsync({
+        title: values.title,
+        sku: values.sku || `SKU-${Date.now()}`,
+        barcode: values.barcode || undefined,
+        mrp: values.mrp,
+        salePrice: values.salePrice ?? undefined,
+        cost: values.cost,
+        defaultDiscount: values.defaultDiscount ?? 0,
+        defaultDiscountType: values.defaultDiscountType,
+        unitId: values.unitId || unitSettings?.defaultUnitId || undefined,
+        description: values.description || undefined,
+        reorderLevel: values.reorderLevel ?? undefined,
+      })
+      resetForm({
+        values: {
+          ...formik.initialValues,
+          unitId: unitSettings?.defaultUnitId || null,
+        },
+      })
+    },
+  })
+
+  useBarcodeScanner((code) => {
+    formik.setFieldValue('barcode', code)
+  })
 
   const handleStockAdjust = async (id: string, delta: number) => {
     if (!delta) return
@@ -104,141 +100,97 @@ export const ProductsPage = () => {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <h2 className="text-lg font-semibold">Add product</h2>
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={formik.handleSubmit} className="mt-4 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="sm:col-span-2">
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Title</span>
-              <input
-                required
-                value={form.title}
-                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="New release hardcover"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">SKU</span>
-              <input
-                value={form.sku}
-                onChange={(event) => setForm((prev) => ({ ...prev, sku: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="SKU-001"
-              />
-            </label>
-            <label>
-              <span className="flex items-center justify-between text-sm font-medium text-slate-600 dark:text-slate-300">
+            <FormField
+              name="title"
+              label="Title"
+              required
+              placeholder="New release hardcover"
+              className="sm:col-span-2"
+            />
+            <FormField name="sku" label="SKU" placeholder="SKU-001" />
+            <div>
+              <label className="flex items-center justify-between text-sm font-medium text-slate-600 dark:text-slate-300">
                 Barcode
                 <span className="text-xs text-slate-400">Scan with reader</span>
-              </span>
-              <input
-                value={form.barcode}
-                onChange={(event) => setForm((prev) => ({ ...prev, barcode: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="9780000000"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">MRP (Maximum Retail Price)</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.mrp}
-                onChange={(event) => setForm((prev) => ({ ...prev, mrp: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="0.00"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Sale Price</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.salePrice}
-                onChange={(event) => setForm((prev) => ({ ...prev, salePrice: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="Auto-calculated from discount"
-              />
-              <p className="mt-1 text-xs text-slate-500">Leave empty to auto-calculate from MRP and discount</p>
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Default Discount</span>
+              </label>
+              <FormField name="barcode" placeholder="9780000000" />
+            </div>
+            <FormField
+              name="mrp"
+              label="MRP (Maximum Retail Price)"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              placeholder="0.00"
+            />
+            <FormField
+              name="salePrice"
+              label="Sale Price"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Auto-calculated from discount"
+              helperText="Leave empty to auto-calculate from MRP and discount"
+            />
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Default Discount</label>
               <div className="mt-1 flex gap-2">
-                <input
+                <FormField
+                  name="defaultDiscount"
                   type="number"
                   min="0"
                   step="0.01"
-                  value={form.defaultDiscount}
-                  onChange={(event) => setForm((prev) => ({ ...prev, defaultDiscount: event.target.value }))}
-                  className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   placeholder="0.00"
+                  className="flex-1"
                 />
-                <select
-                  value={form.defaultDiscountType}
-                  onChange={(event) => setForm((prev) => ({ ...prev, defaultDiscountType: event.target.value as 'amount' | 'percentage' }))}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                >
+                <FormField name="defaultDiscountType" as="select" className="w-auto">
                   <option value="amount">Amount</option>
                   <option value="percentage">%</option>
-                </select>
+                </FormField>
               </div>
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Cost</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.cost}
-                onChange={(event) => setForm((prev) => ({ ...prev, cost: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="0.00"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Unit</span>
-              <select
-                value={form.unitId || defaultUnitId}
-                onChange={(event) => setForm((prev) => ({ ...prev, unitId: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              >
-                {units.map((unit) => (
-                  <option key={unit.id} value={unit.id}>
-                    {unit.name} ({unit.symbol})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Reorder Level</span>
-              <input
-                type="number"
-                min="0"
-                value={form.reorderLevel}
-                onChange={(event) => setForm((prev) => ({ ...prev, reorderLevel: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="0"
-              />
-            </label>
-            <label className="sm:col-span-2">
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Description</span>
-              <textarea
-                value={form.description}
-                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                rows={2}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="Product description"
-              />
-            </label>
+            </div>
+            <FormField
+              name="cost"
+              label="Cost"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              placeholder="0.00"
+            />
+            <FormField name="unitId" label="Unit" as="select">
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name} ({unit.symbol})
+                </option>
+              ))}
+            </FormField>
+            <FormField
+              name="reorderLevel"
+              label="Reorder Level"
+              type="number"
+              min="0"
+              placeholder="0"
+            />
+            <FormField
+              name="description"
+              label="Description"
+              as="textarea"
+              rows={2}
+              placeholder="Product description"
+              className="sm:col-span-2"
+            />
           </div>
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={createProduct.isPending}
+              disabled={createProduct.isPending || formik.isSubmitting}
               className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-auto"
             >
-              {createProduct.isPending ? 'Saving…' : 'Save product'}
+              {createProduct.isPending || formik.isSubmitting ? 'Saving…' : 'Save product'}
             </button>
           </div>
         </form>

@@ -1,8 +1,10 @@
-import { type FormEvent, useState } from 'react'
+import { useFormik } from 'formik'
 
 import { useCreateCustomer } from '../hooks/useCustomers'
 import { INDIAN_STATES } from '../utils/taxSettings'
+import { FormField } from './FormField'
 import type { Customer, CustomerType } from '../db/schema'
+import { customerSchema, type CustomerFormValues } from '../utils/validationSchemas'
 
 interface CustomerQuickCreateModalProps {
   isOpen: boolean
@@ -18,34 +20,36 @@ export const CustomerQuickCreateModal = ({
   type = 'customer',
 }: CustomerQuickCreateModalProps) => {
   const createCustomer = useCreateCustomer()
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    state: '',
+
+  const formik = useFormik<CustomerFormValues>({
+    initialValues: {
+      name: '',
+      type,
+      email: null,
+      phone: null,
+      address: null,
+      state: null,
+      notes: null,
+    },
+    validationSchema: customerSchema,
+    onSubmit: async (values, { resetForm }) => {
+      try {
+        const customer = await createCustomer.mutateAsync({
+          name: values.name,
+          type: values.type as CustomerType,
+          email: values.email || undefined,
+          phone: values.phone || undefined,
+          address: values.address || undefined,
+          state: values.state || undefined,
+        })
+        onCustomerCreated(customer)
+        resetForm()
+        onClose()
+      } catch (error) {
+        console.error('Failed to create customer', error)
+      }
+    },
   })
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!form.name.trim()) return
-
-    try {
-      const customer = await createCustomer.mutateAsync({
-        name: form.name.trim(),
-        type,
-        email: form.email.trim() || undefined,
-        phone: form.phone.trim() || undefined,
-        address: form.address.trim() || undefined,
-        state: form.state || undefined,
-      })
-      onCustomerCreated(customer)
-      setForm({ name: '', email: '', phone: '', address: '', state: '' })
-      onClose()
-    } catch (error) {
-      console.error('Failed to create customer', error)
-    }
-  }
 
   if (!isOpen) return null
 
@@ -61,66 +65,42 @@ export const CustomerQuickCreateModal = ({
             Quickly add a {type === 'customer' ? 'customer' : 'supplier'} to continue
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={formik.handleSubmit} className="p-6">
           <div className="space-y-4">
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">
-                Name <span className="text-red-500">*</span>
-              </span>
-              <input
-                required
-                autoFocus
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="John Doe"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Email</span>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="john@example.com"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Phone</span>
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="+1 234 567 8900"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Address</span>
-              <textarea
-                value={form.address}
-                onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))}
-                rows={2}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="123 Main St, City, State ZIP"
-              />
-            </label>
-            <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">State</span>
-              <select
-                value={form.state}
-                onChange={(event) => setForm((prev) => ({ ...prev, state: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              >
-                <option value="">Select state (optional)</option>
-                {INDIAN_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <FormField
+              name="name"
+              label="Name"
+              required
+              autoFocus
+              placeholder="John Doe"
+            />
+            <FormField
+              name="email"
+              label="Email"
+              type="email"
+              placeholder="john@example.com"
+            />
+            <FormField
+              name="phone"
+              label="Phone"
+              type="tel"
+              placeholder="+1 234 567 8900"
+            />
+            <FormField
+              name="address"
+              label="Address"
+              as="textarea"
+              rows={2}
+              placeholder="123 Main St, City, State ZIP"
+            />
+            <FormField name="state" label="State" as="select">
+              <option value="">Select state (optional)</option>
+              {INDIAN_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </FormField>
           </div>
           <div className="mt-6 flex justify-end gap-3">
             <button
@@ -132,10 +112,10 @@ export const CustomerQuickCreateModal = ({
             </button>
             <button
               type="submit"
-              disabled={createCustomer.isPending || !form.name.trim()}
+              disabled={createCustomer.isPending || formik.isSubmitting || !formik.values.name.trim()}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
             >
-              {createCustomer.isPending ? 'Creating…' : 'Create & Continue'}
+              {createCustomer.isPending || formik.isSubmitting ? 'Creating…' : 'Create & Continue'}
             </button>
           </div>
         </form>
