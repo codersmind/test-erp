@@ -1,11 +1,12 @@
 import { get, set } from 'idb-keyval'
 
-export type PrintPaperSize = 'pos' | 'a4' | 'custom'
+export type PrintPaperSize = 'pos' | 'a4' | 'custom' | 'saved'
 
-export interface PrintSettings {
-  defaultPaperSize: PrintPaperSize
-  customWidth: number // in mm
-  customHeight: number // in mm
+export interface CustomPrintFormat {
+  id: string
+  name: string
+  width: number // in mm
+  height: number // in mm
   fontSize: 'small' | 'medium' | 'large'
   showLogo: boolean
   logoUrl?: string
@@ -14,6 +15,22 @@ export interface PrintSettings {
   companyPhone?: string
   companyEmail?: string
   footerText?: string
+}
+
+export interface PrintSettings {
+  defaultPaperSize: PrintPaperSize
+  defaultFormatId?: string // ID of saved format if defaultPaperSize is 'saved'
+  customWidth: number // in mm (legacy, for backward compatibility)
+  customHeight: number // in mm (legacy, for backward compatibility)
+  fontSize: 'small' | 'medium' | 'large'
+  showLogo: boolean
+  logoUrl?: string
+  companyName?: string
+  companyAddress?: string
+  companyPhone?: string
+  companyEmail?: string
+  footerText?: string
+  savedFormats: CustomPrintFormat[] // Array of saved custom formats
 }
 
 const PRINT_SETTINGS_KEY = 'erp_print_settings'
@@ -29,6 +46,7 @@ const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   companyPhone: '',
   companyEmail: '',
   footerText: 'Thank you for your business!',
+  savedFormats: [],
 }
 
 export const getPrintSettings = async (): Promise<PrintSettings> => {
@@ -41,96 +59,139 @@ export const setPrintSettings = async (settings: PrintSettings): Promise<void> =
 }
 
 /**
- * Get CSS for print based on paper size
+ * Add a new custom print format
  */
-export const getPrintStyles = (paperSize: PrintPaperSize, customWidth?: number, customHeight?: number): string => {
+export const addCustomFormat = async (format: Omit<CustomPrintFormat, 'id'>): Promise<CustomPrintFormat> => {
+  const settings = await getPrintSettings()
+  const { nanoid } = await import('nanoid')
+  const newFormat: CustomPrintFormat = {
+    ...format,
+    id: nanoid(),
+  }
+  const updatedSettings: PrintSettings = {
+    ...settings,
+    savedFormats: [...(settings.savedFormats || []), newFormat],
+  }
+  await setPrintSettings(updatedSettings)
+  return newFormat
+}
+
+/**
+ * Update an existing custom print format
+ */
+export const updateCustomFormat = async (id: string, format: Partial<Omit<CustomPrintFormat, 'id'>>): Promise<void> => {
+  const settings = await getPrintSettings()
+  const updatedFormats = (settings.savedFormats || []).map((f) => (f.id === id ? { ...f, ...format } : f))
+  const updatedSettings: PrintSettings = {
+    ...settings,
+    savedFormats: updatedFormats,
+  }
+  await setPrintSettings(updatedSettings)
+}
+
+/**
+ * Delete a custom print format
+ */
+export const deleteCustomFormat = async (id: string): Promise<void> => {
+  const settings = await getPrintSettings()
+  const updatedFormats = (settings.savedFormats || []).filter((f) => f.id !== id)
+  const updatedSettings: PrintSettings = {
+    ...settings,
+    savedFormats: updatedFormats,
+    // If deleted format was the default, reset to a4
+    defaultPaperSize: settings.defaultFormatId === id ? 'a4' : settings.defaultPaperSize,
+    defaultFormatId: settings.defaultFormatId === id ? undefined : settings.defaultFormatId,
+  }
+  await setPrintSettings(updatedSettings)
+}
+
+/**
+ * Get a custom format by ID
+ */
+export const getCustomFormat = async (id: string): Promise<CustomPrintFormat | null> => {
+  const settings = await getPrintSettings()
+  return (settings.savedFormats || []).find((f) => f.id === id) || null
+}
+
+/**
+ * Get CSS for print based on paper size or saved format
+ */
+export const getPrintStyles = async (
+  paperSize: PrintPaperSize,
+  customWidth?: number,
+  customHeight?: number,
+  formatId?: string,
+): Promise<string> => {
+  // If using a saved format, get its dimensions
+  if (paperSize === 'saved' && formatId) {
+    const format = await getCustomFormat(formatId)
+    if (format) {
+      return getPrintStylesForDimensions(format.width, format.height, format.fontSize)
+    }
+  }
+  
+  // Use provided dimensions or fallback
+  const width = customWidth || 80
+  const height = customHeight || 200
+  const fontSize = 'medium' // Default, can be enhanced later
+  
+  if (paperSize === 'pos') {
+    return getPrintStylesForDimensions(80, 200, 'small')
+  } else if (paperSize === 'a4') {
+    return getPrintStylesForDimensions(210, 297, 'medium')
+  } else {
+    return getPrintStylesForDimensions(width, height, fontSize)
+  }
+}
+
+/**
+ * Get CSS for print based on dimensions
+ */
+const getPrintStylesForDimensions = (width: number, height: number, fontSize: 'small' | 'medium' | 'large'): string => {
+  const fontSizes = {
+    small: { base: '9px', header: '14px', table: '8px', totals: '10px', footer: '7px' },
+    medium: { base: '11px', header: '18px', table: '10px', totals: '13px', footer: '10px' },
+    large: { base: '12px', header: '24px', table: '12px', totals: '16px', footer: '11px' },
+  }
+  const sizes = fontSizes[fontSize]
+  
   const baseStyles = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; color: #000; }
     @media print {
       body { padding: 0; margin: 0; }
       .no-print { display: none !important; }
-      @page { margin: 0; }
+      @page { margin: 0; size: ${width}mm ${height}mm; }
     }
   `
-
-  if (paperSize === 'pos') {
-    // POS/Receipt printer - typically 80mm wide
-    return baseStyles + `
-      body { 
-        width: 80mm; 
-        max-width: 80mm; 
-        padding: 5mm; 
-        font-size: 10px; 
-      }
-      .header { text-align: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #000; }
-      .header h1 { font-size: 16px; margin-bottom: 5px; }
-      .info { margin-bottom: 15px; font-size: 9px; }
-      .info-section { margin-bottom: 8px; }
-      .info-section h3 { font-size: 9px; margin-bottom: 3px; font-weight: bold; }
-      .info-section p { font-size: 9px; margin: 2px 0; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9px; }
-      table th, table td { padding: 4px 2px; text-align: left; border-bottom: 1px dashed #ccc; }
-      table th { font-weight: bold; font-size: 8px; }
-      .text-right { text-align: right; }
-      .totals { margin-top: 10px; width: 100%; }
-      .totals-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 9px; border-bottom: 1px dashed #ccc; }
-      .totals-row.total { font-weight: bold; font-size: 11px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 5px 0; margin-top: 5px; }
-      .footer { margin-top: 15px; text-align: center; font-size: 8px; color: #666; }
-    `
-  } else if (paperSize === 'a4') {
-    // A4 paper - standard invoice
-    return baseStyles + `
-      body { 
-        width: 210mm; 
-        max-width: 210mm; 
-        padding: 20mm; 
-        font-size: 12px; 
-      }
-      .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-      .header h1 { font-size: 24px; margin-bottom: 10px; }
-      .info { display: flex; justify-content: space-between; margin-bottom: 30px; }
-      .info-section { flex: 1; }
-      .info-section h3 { font-size: 14px; margin-bottom: 10px; text-transform: uppercase; font-weight: bold; }
-      .info-section p { font-size: 12px; margin: 3px 0; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-      table th, table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-      table th { background-color: #f5f5f5; font-weight: bold; text-transform: uppercase; font-size: 12px; }
-      table td { font-size: 12px; }
-      .text-right { text-align: right; }
-      .totals { margin-top: 20px; margin-left: auto; width: 300px; }
-      .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #ddd; font-size: 12px; }
-      .totals-row.total { font-weight: bold; font-size: 16px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 10px 0; margin-top: 10px; }
-      .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #666; }
-    `
-  } else {
-    // Custom paper size
-    const width = customWidth || 80
-    const height = customHeight || 200
-    return baseStyles + `
-      body { 
-        width: ${width}mm; 
-        max-width: ${width}mm; 
-        min-height: ${height}mm;
-        padding: 5mm; 
-        font-size: 11px; 
-      }
-      .header { text-align: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #000; }
-      .header h1 { font-size: 18px; margin-bottom: 8px; }
-      .info { margin-bottom: 20px; }
-      .info-section { margin-bottom: 10px; }
-      .info-section h3 { font-size: 11px; margin-bottom: 5px; font-weight: bold; }
-      .info-section p { font-size: 10px; margin: 3px 0; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-      table th, table td { padding: 6px 4px; text-align: left; border-bottom: 1px solid #ddd; }
-      table th { font-weight: bold; font-size: 10px; }
-      table td { font-size: 10px; }
-      .text-right { text-align: right; }
-      .totals { margin-top: 15px; width: 100%; }
-      .totals-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #ddd; font-size: 11px; }
-      .totals-row.total { font-weight: bold; font-size: 13px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 8px 0; margin-top: 8px; }
-      .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #666; }
-    `
-  }
+  
+  // Adjust padding and font sizes based on paper width
+  const isNarrow = width <= 100
+  const padding = isNarrow ? '5mm' : width <= 150 ? '10mm' : '20mm'
+  
+  return baseStyles + `
+    body { 
+      width: ${width}mm; 
+      max-width: ${width}mm; 
+      min-height: ${height}mm;
+      padding: ${padding}; 
+      font-size: ${sizes.base}; 
+    }
+    .header { text-align: center; margin-bottom: ${isNarrow ? '10px' : '20px'}; padding-bottom: ${isNarrow ? '10px' : '15px'}; border-bottom: ${isNarrow ? '1px' : '2px'} solid #000; }
+    .header h1 { font-size: ${sizes.header}; margin-bottom: ${isNarrow ? '5px' : '8px'}; }
+    .info { ${isNarrow ? 'margin-bottom: 15px;' : 'display: flex; justify-content: space-between; margin-bottom: 20px;'} }
+    .info-section { ${isNarrow ? 'margin-bottom: 8px;' : 'flex: 1;'} }
+    .info-section h3 { font-size: ${sizes.base}; margin-bottom: ${isNarrow ? '3px' : '5px'}; font-weight: bold; ${!isNarrow ? 'text-transform: uppercase;' : ''} }
+    .info-section p { font-size: ${sizes.base}; margin: ${isNarrow ? '2px' : '3px'} 0; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: ${isNarrow ? '10px' : '15px'}; }
+    table th, table td { padding: ${isNarrow ? '4px 2px' : '6px 4px'}; text-align: left; border-bottom: ${isNarrow ? '1px dashed #ccc' : '1px solid #ddd'}; }
+    table th { font-weight: bold; font-size: ${sizes.table}; ${!isNarrow ? 'background-color: #f5f5f5; text-transform: uppercase;' : ''} }
+    table td { font-size: ${sizes.table}; }
+    .text-right { text-align: right; }
+    .totals { margin-top: ${isNarrow ? '10px' : '15px'}; ${isNarrow ? 'width: 100%;' : 'margin-left: auto; width: 300px;'} }
+    .totals-row { display: flex; justify-content: space-between; padding: ${isNarrow ? '3px' : '5px'} 0; border-bottom: ${isNarrow ? '1px dashed #ccc' : '1px solid #ddd'}; font-size: ${sizes.base}; }
+    .totals-row.total { font-weight: bold; font-size: ${sizes.totals}; border-top: ${isNarrow ? '2px' : '2px'} solid #000; border-bottom: ${isNarrow ? '2px' : '2px'} solid #000; padding: ${isNarrow ? '5px' : '8px'} 0; margin-top: ${isNarrow ? '5px' : '8px'}; }
+    .footer { margin-top: ${isNarrow ? '15px' : '20px'}; text-align: center; font-size: ${sizes.footer}; color: #666; }
+  `
 }
 

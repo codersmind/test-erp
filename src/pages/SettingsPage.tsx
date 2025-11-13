@@ -30,12 +30,19 @@ import {
 import {
   getPrintSettings,
   setPrintSettings,
+  addCustomFormat,
+  updateCustomFormat,
+  deleteCustomFormat,
   type PrintSettings,
   type PrintPaperSize,
+  type CustomPrintFormat,
 } from '../utils/printSettings'
+
+type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'integration' | 'danger'
 
 export const SettingsPage = () => {
   const { lastSyncedAt, pendingCount } = useSync()
+  const [activeTab, setActiveTab] = useState<SettingsTab>('tax')
   const [isResetting, setIsResetting] = useState(false)
   const [taxSettings, setTaxSettingsState] = useState<TaxSettings>({
     type: 'gst',
@@ -84,8 +91,23 @@ export const SettingsPage = () => {
     companyPhone: '',
     companyEmail: '',
     footerText: 'Thank you for your business!',
+    savedFormats: [],
   })
   const [isSavingPrint, setIsSavingPrint] = useState(false)
+  const [formatForm, setFormatForm] = useState<Omit<CustomPrintFormat, 'id'>>({
+    name: '',
+    width: 80,
+    height: 200,
+    fontSize: 'medium',
+    showLogo: false,
+    companyName: '',
+    companyAddress: '',
+    companyPhone: '',
+    companyEmail: '',
+    footerText: 'Thank you for your business!',
+  })
+  const [editingFormatId, setEditingFormatId] = useState<string | null>(null)
+  const [isSavingFormat, setIsSavingFormat] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -232,15 +254,57 @@ export const SettingsPage = () => {
     }
   }
 
+  const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
+    { id: 'tax', label: 'Tax Settings', icon: '💰' },
+    { id: 'units', label: 'Product Units', icon: '📦' },
+    { id: 'orderId', label: 'Order ID Format', icon: '🔢' },
+    { id: 'print', label: 'Print Settings', icon: '🖨️' },
+    { id: 'integration', label: 'Integration', icon: '🔗' },
+    { id: 'danger', label: 'Danger Zone', icon: '⚠️' },
+  ]
+
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold">GST Tax settings</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          Set the default GST tax configuration. This will be applied to all new sales orders, but can be changed before each sale.
-        </p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Settings</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Manage your application settings and preferences</p>
+      </div>
 
-        <div className="mt-4 space-y-4">
+      {/* Tab Navigation */}
+      <div className="border-b border-slate-200 dark:border-slate-700">
+        <nav className="-mb-px flex space-x-8 overflow-x-auto" aria-label="Tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`
+                whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition-colors
+                ${
+                  activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-300'
+                }
+              `}
+            >
+              <span className="mr-2">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      <div className="mt-6">
+        {/* Tax Settings Tab */}
+        {activeTab === 'tax' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold">GST Tax settings</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Set the default GST tax configuration. This will be applied to all new sales orders, but can be changed before each sale.
+              </p>
+
+              <div className="mt-4 space-y-4">
           {/* Tax Type Selection */}
           <div>
             <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Tax Type</label>
@@ -562,158 +626,166 @@ export const SettingsPage = () => {
           )}
         </div>
       </section>
-
-      {/* Unit Management */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold">Product Units</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          Manage units for products (e.g., Piece, Dozen, Gross). Set conversion factors to convert between units (e.g., 1 Dozen = 12 Pieces).
-        </p>
-
-        <div className="mt-4 space-y-4">
-          {/* Add/Edit Unit Form */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-            <h3 className="text-sm font-semibold mb-3">
-              {editingUnitId ? `Edit Unit: ${editingUnitId}` : 'Add New Unit'}
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Unit Name</label>
-                <input
-                  type="text"
-                  value={unitForm.name}
-                  onChange={(e) => setUnitForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g., Dozen, Gross"
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Symbol</label>
-                <input
-                  type="text"
-                  value={unitForm.symbol}
-                  onChange={(e) => setUnitForm((prev) => ({ ...prev, symbol: e.target.value }))}
-                  placeholder="e.g., dz, gr"
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
-                  Conversion Factor (to base unit)
-                </label>
-                <input
-                  type="number"
-                  min="0.0001"
-                  step="0.0001"
-                  value={unitForm.conversionFactor}
-                  onChange={(e) => setUnitForm((prev) => ({ ...prev, conversionFactor: Number.parseFloat(e.target.value) || 1 }))}
-                  disabled={unitForm.isBase}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:disabled:bg-slate-800"
-                  placeholder="e.g., 12 for Dozen (1 dozen = 12 pieces)"
-                />
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  How many base units equal 1 of this unit? (Base units have factor of 1)
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveUnit}
-                  disabled={!unitForm.name.trim() || !unitForm.symbol.trim() || isSavingUnit || unitForm.isBase}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
-                >
-                  {isSavingUnit ? 'Saving...' : editingUnitId ? 'Update Unit' : 'Add Unit'}
-                </button>
-                {editingUnitId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUnitForm({ name: '', symbol: '', isBase: false, conversionFactor: 1 })
-                      setEditingUnitId(null)
-                    }}
-                    className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
+        )}
 
-          {/* List of Units */}
-          <div>
-            <h3 className="text-sm font-semibold mb-2">Available Units</h3>
-            <div className="space-y-2">
-              {units.map((unit) => (
-                <div
-                  key={unit.id}
-                  className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-sm">{unit.name}</p>
-                      <span className="text-xs text-slate-500">({unit.symbol})</span>
-                      {unit.isBase && (
-                        <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                          Base
-                        </span>
-                      )}
-                      {unitSettings.defaultUnitId === unit.id && (
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                          Default
-                        </span>
+        {/* Product Units Tab */}
+        {activeTab === 'units' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold">Product Units</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Manage units for products (e.g., Piece, Dozen, Gross). Set conversion factors to convert between units (e.g., 1 Dozen = 12 Pieces).
+              </p>
+
+              <div className="mt-4 space-y-4">
+                {/* Add/Edit Unit Form */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                  <h3 className="text-sm font-semibold mb-3">
+                    {editingUnitId ? `Edit Unit: ${editingUnitId}` : 'Add New Unit'}
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Unit Name</label>
+                      <input
+                        type="text"
+                        value={unitForm.name}
+                        onChange={(e) => setUnitForm((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="e.g., Dozen, Gross"
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Symbol</label>
+                      <input
+                        type="text"
+                        value={unitForm.symbol}
+                        onChange={(e) => setUnitForm((prev) => ({ ...prev, symbol: e.target.value }))}
+                        placeholder="e.g., dz, gr"
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+                        Conversion Factor (to base unit)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.0001"
+                        step="0.0001"
+                        value={unitForm.conversionFactor}
+                        onChange={(e) => setUnitForm((prev) => ({ ...prev, conversionFactor: Number.parseFloat(e.target.value) || 1 }))}
+                        disabled={unitForm.isBase}
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:disabled:bg-slate-800"
+                        placeholder="e.g., 12 for Dozen (1 dozen = 12 pieces)"
+                      />
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        How many base units equal 1 of this unit? (Base units have factor of 1)
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveUnit}
+                        disabled={!unitForm.name.trim() || !unitForm.symbol.trim() || isSavingUnit || unitForm.isBase}
+                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+                      >
+                        {isSavingUnit ? 'Saving...' : editingUnitId ? 'Update Unit' : 'Add Unit'}
+                      </button>
+                      {editingUnitId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUnitForm({ name: '', symbol: '', isBase: false, conversionFactor: 1 })
+                            setEditingUnitId(null)
+                          }}
+                          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          Cancel
+                        </button>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500">
-                      {unit.isBase
-                        ? 'Base unit (1:1)'
-                        : `1 ${unit.name} = ${unit.conversionFactor} ${units.find((u) => u.isBase)?.name || 'base unit'}`}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {!unit.isBase && (
-                      <>
-                        {unitSettings.defaultUnitId !== unit.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleSetDefaultUnit(unit.id)}
-                            className="rounded-md border border-green-300 bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 transition hover:bg-green-100 dark:border-green-700 dark:bg-green-900/20 dark:text-green-400"
-                          >
-                            Set Default
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleEditUnit(unit)}
-                          className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteUnit(unit.id)}
-                          className="rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
                   </div>
                 </div>
-              ))}
-            </div>
+
+              {/* List of Units */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Available Units</h3>
+                <div className="space-y-2">
+                  {units.map((unit) => (
+                    <div
+                      key={unit.id}
+                      className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm">{unit.name}</p>
+                          <span className="text-xs text-slate-500">({unit.symbol})</span>
+                          {unit.isBase && (
+                            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              Base
+                            </span>
+                          )}
+                          {unitSettings.defaultUnitId === unit.id && (
+                            <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          {unit.isBase
+                            ? 'Base unit (1:1)'
+                            : `1 ${unit.name} = ${unit.conversionFactor} ${units.find((u) => u.isBase)?.name || 'base unit'}`}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {!unit.isBase && (
+                          <>
+                            {unitSettings.defaultUnitId !== unit.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetDefaultUnit(unit.id)}
+                                className="rounded-md border border-green-300 bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 transition hover:bg-green-100 dark:border-green-700 dark:bg-green-900/20 dark:text-green-400"
+                              >
+                                Set Default
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleEditUnit(unit)}
+                              className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUnit(unit.id)}
+                              className="rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              </div>
+            </section>
           </div>
-        </div>
-      </section>
+        )}
 
-      {/* Order ID Settings */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold">Order ID Format</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          Configure how order IDs are generated. Choose between random IDs or manual format with auto-increment (e.g., SO-001, SO-002).
-        </p>
+        {/* Order ID Format Tab */}
+        {activeTab === 'orderId' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold">Order ID Format</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Configure how order IDs are generated. Choose between random IDs or manual format with auto-increment (e.g., SO-001, SO-002).
+              </p>
 
-        <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6">
           {/* Sales Order ID Settings */}
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
             <h3 className="text-sm font-semibold mb-3">Sales Order ID</h3>
@@ -892,41 +964,92 @@ export const SettingsPage = () => {
             </div>
           </div>
 
-          {isSavingOrderId && <p className="text-xs text-slate-500">Saving...</p>}
-        </div>
-      </section>
+              {isSavingOrderId && <p className="text-xs text-slate-500">Saving...</p>}
+            </div>
+          </section>
+          </div>
+        )}
 
-      {/* Print Settings */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold">Print Settings</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          Configure default print settings for invoices and purchase orders. You can override these settings when printing.
-        </p>
+        {/* Print Settings Tab */}
+        {activeTab === 'print' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold">Print Settings</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Configure default print settings for invoices and purchase orders. You can override these settings when printing.
+              </p>
 
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Default Paper Size</label>
-            <select
-              value={printSettings.defaultPaperSize}
-              onChange={async (e) => {
-                const newSettings = { ...printSettings, defaultPaperSize: e.target.value as PrintPaperSize }
-                setPrintSettingsState(newSettings)
-                setIsSavingPrint(true)
-                try {
-                  await setPrintSettings(newSettings)
-                } finally {
-                  setIsSavingPrint(false)
-                }
-              }}
-              className="w-full max-w-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            >
-              <option value="pos">POS/Receipt (80mm)</option>
-              <option value="a4">A4 (210mm)</option>
-              <option value="custom">Custom Size</option>
-            </select>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Default paper size for printing invoices and purchase orders
-            </p>
+              <div className="mt-4 space-y-4">
+          <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 dark:border-blue-800/60 dark:bg-blue-900/20">
+            <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2">Default Print Settings</h3>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Default Paper Size</label>
+              <select
+                value={printSettings.defaultPaperSize === 'saved' && printSettings.defaultFormatId ? 'saved' : printSettings.defaultPaperSize}
+                onChange={async (e) => {
+                  const newSize = e.target.value as PrintPaperSize
+                  if (newSize === 'saved' && printSettings.savedFormats && printSettings.savedFormats.length > 0) {
+                    const newSettings = { 
+                      ...printSettings, 
+                      defaultPaperSize: 'saved' as const, 
+                      defaultFormatId: printSettings.savedFormats[0].id 
+                    }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  } else {
+                    const newSettings = { ...printSettings, defaultPaperSize: newSize, defaultFormatId: undefined }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }
+                }}
+                className="w-full max-w-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              >
+                <option value="pos">POS/Receipt (80mm) - For thermal printers</option>
+                <option value="a4">A4 (210mm) - Standard invoice size</option>
+                <option value="custom">Custom Size - Set your own dimensions</option>
+                {printSettings.savedFormats && printSettings.savedFormats.length > 0 && (
+                  <option value="saved">Saved Format - Use a saved custom format</option>
+                )}
+              </select>
+              {printSettings.defaultPaperSize === 'saved' && printSettings.defaultFormatId && (
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Selected Format</label>
+                  <select
+                    value={printSettings.defaultFormatId}
+                    onChange={async (e) => {
+                      const newSettings = { ...printSettings, defaultFormatId: e.target.value }
+                      setPrintSettingsState(newSettings)
+                      setIsSavingPrint(true)
+                      try {
+                        await setPrintSettings(newSettings)
+                      } finally {
+                        setIsSavingPrint(false)
+                      }
+                    }}
+                    className="w-full max-w-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    {printSettings.savedFormats?.map((format) => (
+                      <option key={format.id} value={format.id}>
+                        {format.name} ({format.width}mm × {format.height}mm)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                This will be the default paper size when printing invoices and purchase orders. You can override it when printing.
+              </p>
+            </div>
           </div>
 
           {printSettings.defaultPaperSize === 'custom' && (
@@ -1077,34 +1200,311 @@ export const SettingsPage = () => {
 
           {isSavingPrint && <p className="text-xs text-slate-500">Saving...</p>}
         </div>
-      </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold">Google integration</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          This starter keeps data offline in IndexedDB. Replace the stub in <code>sync/googleDriveClient.ts</code> with a
-          call to the Google Drive API. Store the OAuth token securely and reuse it for manual sync.
-        </p>
-        <div className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
-          <p>Pending sync items: {pendingCount}</p>
-          <p>Last synced at: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'Never'}</p>
-        </div>
-      </section>
+        {/* Saved Custom Formats */}
+        <div className="mt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Saved Custom Formats</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Create and save multiple custom print formats for different printers or use cases
+              </p>
+            </div>
+          </div>
 
-      <section className="rounded-xl border border-red-200 bg-white p-4 shadow-sm dark:border-red-800/60 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">Danger zone</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          Clear all offline data if you need a fresh start. Any unsynced records will be lost.
-        </p>
-        <button
-          type="button"
-          onClick={handleReset}
-          disabled={isResetting}
-          className="mt-4 inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-400"
-        >
-          {isResetting ? 'Clearing…' : 'Clear local data'}
-        </button>
-      </section>
+          {/* Add/Edit Format Form */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+            <h4 className="text-sm font-semibold mb-3">
+              {editingFormatId ? `Edit Format: ${formatForm.name}` : 'Add New Custom Format'}
+            </h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Format Name</label>
+                <input
+                  type="text"
+                  value={formatForm.name}
+                  onChange={(e) => setFormatForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., Thermal 80mm, A5 Invoice, Custom Receipt"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Width (mm)</label>
+                  <input
+                    type="number"
+                    min="50"
+                    max="500"
+                    value={formatForm.width}
+                    onChange={(e) => setFormatForm((prev) => ({ ...prev, width: Number.parseInt(e.target.value) || 80 }))}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Height (mm)</label>
+                  <input
+                    type="number"
+                    min="50"
+                    max="1000"
+                    value={formatForm.height}
+                    onChange={(e) => setFormatForm((prev) => ({ ...prev, height: Number.parseInt(e.target.value) || 200 }))}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Font Size</label>
+                  <select
+                    value={formatForm.fontSize}
+                    onChange={(e) => setFormatForm((prev) => ({ ...prev, fontSize: e.target.value as 'small' | 'medium' | 'large' }))}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                <h5 className="text-xs font-semibold">Format-Specific Company Info (Optional)</h5>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    value={formatForm.companyName || ''}
+                    onChange={(e) => setFormatForm((prev) => ({ ...prev, companyName: e.target.value }))}
+                    placeholder="Leave empty to use default"
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={formatForm.companyPhone || ''}
+                      onChange={(e) => setFormatForm((prev) => ({ ...prev, companyPhone: e.target.value }))}
+                      placeholder="Optional"
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={formatForm.companyEmail || ''}
+                      onChange={(e) => setFormatForm((prev) => ({ ...prev, companyEmail: e.target.value }))}
+                      placeholder="Optional"
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Footer Text</label>
+                  <input
+                    type="text"
+                    value={formatForm.footerText || ''}
+                    onChange={(e) => setFormatForm((prev) => ({ ...prev, footerText: e.target.value }))}
+                    placeholder="Thank you for your business!"
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!formatForm.name.trim()) {
+                      alert('Please enter a format name')
+                      return
+                    }
+                    setIsSavingFormat(true)
+                    try {
+                      if (editingFormatId) {
+                        await updateCustomFormat(editingFormatId, formatForm)
+                      } else {
+                        await addCustomFormat(formatForm)
+                      }
+                      await loadPrintSettings()
+                      setFormatForm({
+                        name: '',
+                        width: 80,
+                        height: 200,
+                        fontSize: 'medium',
+                        showLogo: false,
+                        companyName: '',
+                        companyAddress: '',
+                        companyPhone: '',
+                        companyEmail: '',
+                        footerText: 'Thank you for your business!',
+                      })
+                      setEditingFormatId(null)
+                    } catch (error) {
+                      alert(error instanceof Error ? error.message : 'Failed to save format')
+                    } finally {
+                      setIsSavingFormat(false)
+                    }
+                  }}
+                  disabled={!formatForm.name.trim() || isSavingFormat}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+                >
+                  {isSavingFormat ? 'Saving...' : editingFormatId ? 'Update Format' : 'Save Format'}
+                </button>
+                {editingFormatId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormatForm({
+                        name: '',
+                        width: 80,
+                        height: 200,
+                        fontSize: 'medium',
+                        showLogo: false,
+                        companyName: '',
+                        companyAddress: '',
+                        companyPhone: '',
+                        companyEmail: '',
+                        footerText: 'Thank you for your business!',
+                      })
+                      setEditingFormatId(null)
+                    }}
+                    className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* List of Saved Formats */}
+          {printSettings.savedFormats && printSettings.savedFormats.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Saved Formats</h4>
+              <div className="space-y-2">
+                {printSettings.savedFormats.map((format) => (
+                  <div
+                    key={format.id}
+                    className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <div>
+                      <p className="font-semibold text-sm">{format.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {format.width}mm × {format.height}mm • {format.fontSize} font
+                        {format.companyName && ` • ${format.companyName}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {printSettings.defaultFormatId !== format.id && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newSettings = { ...printSettings, defaultPaperSize: 'saved' as const, defaultFormatId: format.id }
+                            setPrintSettingsState(newSettings)
+                            setIsSavingPrint(true)
+                            try {
+                              await setPrintSettings(newSettings)
+                            } finally {
+                              setIsSavingPrint(false)
+                            }
+                          }}
+                          className="rounded-md border border-green-300 bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 transition hover:bg-green-100 dark:border-green-700 dark:bg-green-900/20 dark:text-green-400"
+                        >
+                          Set Default
+                        </button>
+                      )}
+                      {printSettings.defaultFormatId === format.id && (
+                        <span className="rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                          Default
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormatForm({
+                            name: format.name,
+                            width: format.width,
+                            height: format.height,
+                            fontSize: format.fontSize,
+                            showLogo: format.showLogo,
+                            logoUrl: format.logoUrl,
+                            companyName: format.companyName || '',
+                            companyAddress: format.companyAddress || '',
+                            companyPhone: format.companyPhone || '',
+                            companyEmail: format.companyEmail || '',
+                            footerText: format.footerText || 'Thank you for your business!',
+                          })
+                          setEditingFormatId(format.id)
+                        }}
+                        className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Delete format "${format.name}"?`)) return
+                          setIsSavingFormat(true)
+                          try {
+                            await deleteCustomFormat(format.id)
+                            await loadPrintSettings()
+                          } catch (error) {
+                            alert(error instanceof Error ? error.message : 'Failed to delete format')
+                          } finally {
+                            setIsSavingFormat(false)
+                          }
+                        }}
+                        className="rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+              )}
+            </div>
+          </section>
+          </div>
+        )}
+
+        {/* Integration Tab */}
+        {activeTab === 'integration' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold">Google integration</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                This starter keeps data offline in IndexedDB. Replace the stub in <code>sync/googleDriveClient.ts</code> with a
+                call to the Google Drive API. Store the OAuth token securely and reuse it for manual sync.
+              </p>
+              <div className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
+                <p>Pending sync items: {pendingCount}</p>
+                <p>Last synced at: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'Never'}</p>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* Danger Zone Tab */}
+        {activeTab === 'danger' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-red-200 bg-white p-4 shadow-sm dark:border-red-800/60 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">Danger zone</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Clear all offline data if you need a fresh start. Any unsynced records will be lost.
+              </p>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={isResetting}
+                className="mt-4 inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-400"
+              >
+                {isResetting ? 'Clearing…' : 'Clear local data'}
+              </button>
+            </section>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

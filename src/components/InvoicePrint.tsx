@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SalesOrder, SalesOrderItem, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
-import { getPrintSettings, getPrintStyles, type PrintPaperSize } from '../utils/printSettings'
+import { getPrintSettings, getPrintStyles, type PrintPaperSize, type CustomPrintFormat } from '../utils/printSettings'
 
 interface InvoicePrintProps {
   order: SalesOrder | PurchaseOrder
@@ -14,11 +14,17 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
   const printRef = useRef<HTMLDivElement>(null)
   const [printSettings, setPrintSettings] = useState<Awaited<ReturnType<typeof getPrintSettings>> | null>(null)
   const [selectedPaperSize, setSelectedPaperSize] = useState<PrintPaperSize>('a4')
+  const [selectedFormatId, setSelectedFormatId] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     getPrintSettings().then((settings) => {
       setPrintSettings(settings)
-      setSelectedPaperSize(settings.defaultPaperSize)
+      if (settings.defaultPaperSize === 'saved' && settings.defaultFormatId) {
+        setSelectedPaperSize('saved')
+        setSelectedFormatId(settings.defaultFormatId)
+      } else {
+        setSelectedPaperSize(settings.defaultPaperSize)
+      }
     })
   }, [])
 
@@ -27,19 +33,37 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
     
     const settings = await getPrintSettings()
     const paperSize = selectedPaperSize || settings.defaultPaperSize
-    const styles = getPrintStyles(paperSize, settings.customWidth, settings.customHeight)
+    const formatId = paperSize === 'saved' ? selectedFormatId : undefined
+    const styles = await getPrintStyles(paperSize, settings.customWidth, settings.customHeight, formatId)
+    
+    // Get format details if using saved format
+    let formatDetails: CustomPrintFormat | null = null
+    if (paperSize === 'saved' && formatId) {
+      const { getCustomFormat } = await import('../utils/printSettings')
+      formatDetails = await getCustomFormat(formatId)
+    }
     
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
+    // Use format details if available, otherwise use settings
+    const companyInfo = formatDetails || settings
+    const showLogo = formatDetails?.showLogo ?? settings.showLogo
+    const logoUrl = formatDetails?.logoUrl ?? settings.logoUrl
+    const companyName = formatDetails?.companyName || settings.companyName
+    const companyAddress = formatDetails?.companyAddress || settings.companyAddress
+    const companyPhone = formatDetails?.companyPhone || settings.companyPhone
+    const companyEmail = formatDetails?.companyEmail || settings.companyEmail
+    const footerText = formatDetails?.footerText || settings.footerText || 'Thank you for your business!'
+    
     // Build header with company info if available
     let headerContent = `
       <div class="header">
-        ${settings.showLogo && settings.logoUrl ? `<img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; margin-bottom: 10px;" />` : ''}
-        ${settings.companyName ? `<h1>${settings.companyName}</h1>` : `<h1>${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
-        ${settings.companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${settings.companyAddress}</p>` : ''}
-        ${settings.companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${settings.companyPhone}</p>` : ''}
-        ${settings.companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${settings.companyEmail}</p>` : ''}
+        ${showLogo && logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height: 50px; margin-bottom: 10px;" />` : ''}
+        ${companyName ? `<h1>${companyName}</h1>` : `<h1>${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
+        ${companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${companyAddress}</p>` : ''}
+        ${companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${companyPhone}</p>` : ''}
+        ${companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${companyEmail}</p>` : ''}
         <p style="margin-top: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
       </div>
     `
@@ -77,17 +101,61 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
   return (
     <>
       <div className="no-print mb-4 space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Paper Size:</label>
           <select
             value={selectedPaperSize}
-            onChange={(e) => setSelectedPaperSize(e.target.value as PrintPaperSize)}
+            onChange={(e) => {
+              const newSize = e.target.value as PrintPaperSize
+              setSelectedPaperSize(newSize)
+              if (newSize !== 'saved') {
+                setSelectedFormatId(undefined)
+              } else if (printSettings?.savedFormats && printSettings.savedFormats.length > 0) {
+                setSelectedFormatId(printSettings.savedFormats[0].id)
+              }
+            }}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
           >
             <option value="pos">POS/Receipt (80mm)</option>
             <option value="a4">A4 (210mm)</option>
             <option value="custom">Custom Size</option>
+            {printSettings?.savedFormats && printSettings.savedFormats.length > 0 && (
+              <option value="saved">Saved Formats</option>
+            )}
           </select>
+          {selectedPaperSize === 'saved' && printSettings?.savedFormats && printSettings.savedFormats.length > 0 && (
+            <select
+              value={selectedFormatId || ''}
+              onChange={(e) => setSelectedFormatId(e.target.value)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            >
+              {printSettings.savedFormats.map((format) => (
+                <option key={format.id} value={format.id}>
+                  {format.name} ({format.width}mm × {format.height}mm)
+                </option>
+              ))}
+            </select>
+          )}
+          {selectedPaperSize !== printSettings?.defaultPaperSize && 
+           !(selectedPaperSize === 'saved' && selectedFormatId === printSettings?.defaultFormatId) && (
+            <button
+              onClick={() => {
+                if (printSettings) {
+                  if (printSettings.defaultPaperSize === 'saved' && printSettings.defaultFormatId) {
+                    setSelectedPaperSize('saved')
+                    setSelectedFormatId(printSettings.defaultFormatId)
+                  } else {
+                    setSelectedPaperSize(printSettings.defaultPaperSize)
+                    setSelectedFormatId(undefined)
+                  }
+                }
+              }}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              title="Use default from settings"
+            >
+              Use Default
+            </button>
+          )}
           <button
             onClick={handlePrint}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
@@ -95,6 +163,19 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
             🖨️ Print {type === 'sales' ? 'Invoice' : 'Purchase Order'}
           </button>
         </div>
+        {printSettings && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Default: {
+              printSettings.defaultPaperSize === 'pos' 
+                ? 'POS/Receipt (80mm)' 
+                : printSettings.defaultPaperSize === 'a4' 
+                ? 'A4 (210mm)' 
+                : printSettings.defaultPaperSize === 'saved' && printSettings.defaultFormatId
+                ? printSettings.savedFormats?.find(f => f.id === printSettings.defaultFormatId)?.name || 'Saved Format'
+                : `Custom (${printSettings.customWidth}mm × ${printSettings.customHeight}mm)`
+            } • Change in Settings
+          </p>
+        )}
       </div>
       <div ref={printRef} className="rounded-lg border border-slate-200 bg-white p-6">
         <div className="header">
