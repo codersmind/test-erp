@@ -1,5 +1,6 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SalesOrder, SalesOrderItem, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
+import { getPrintSettings, getPrintStyles, type PrintPaperSize } from '../utils/printSettings'
 
 interface InvoicePrintProps {
   order: SalesOrder | PurchaseOrder
@@ -11,12 +12,37 @@ interface InvoicePrintProps {
 
 export const InvoicePrint = ({ order, items, customerName, supplierName, type }: InvoicePrintProps) => {
   const printRef = useRef<HTMLDivElement>(null)
+  const [printSettings, setPrintSettings] = useState<Awaited<ReturnType<typeof getPrintSettings>> | null>(null)
+  const [selectedPaperSize, setSelectedPaperSize] = useState<PrintPaperSize>('a4')
 
-  const handlePrint = () => {
+  useEffect(() => {
+    getPrintSettings().then((settings) => {
+      setPrintSettings(settings)
+      setSelectedPaperSize(settings.defaultPaperSize)
+    })
+  }, [])
+
+  const handlePrint = async () => {
     if (!printRef.current) return
+    
+    const settings = await getPrintSettings()
+    const paperSize = selectedPaperSize || settings.defaultPaperSize
+    const styles = getPrintStyles(paperSize, settings.customWidth, settings.customHeight)
     
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
+
+    // Build header with company info if available
+    let headerContent = `
+      <div class="header">
+        ${settings.showLogo && settings.logoUrl ? `<img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; margin-bottom: 10px;" />` : ''}
+        ${settings.companyName ? `<h1>${settings.companyName}</h1>` : `<h1>${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
+        ${settings.companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${settings.companyAddress}</p>` : ''}
+        ${settings.companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${settings.companyPhone}</p>` : ''}
+        ${settings.companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${settings.companyEmail}</p>` : ''}
+        <p style="margin-top: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
+      </div>
+    `
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -24,31 +50,12 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
         <head>
           <title>${type === 'sales' ? 'Invoice' : 'Purchase Order'} - ${order.id.slice(-6)}</title>
           <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-            .header h1 { font-size: 24px; margin-bottom: 10px; }
-            .info { display: flex; justify-content: space-between; margin-bottom: 30px; }
-            .info-section { flex: 1; }
-            .info-section h3 { font-size: 14px; margin-bottom: 10px; text-transform: uppercase; }
-            .info-section p { font-size: 12px; margin: 3px 0; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            table th, table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            table th { background-color: #f5f5f5; font-weight: bold; text-transform: uppercase; font-size: 12px; }
-            table td { font-size: 12px; }
-            .text-right { text-align: right; }
-            .totals { margin-top: 20px; margin-left: auto; width: 300px; }
-            .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #ddd; }
-            .totals-row.total { font-weight: bold; font-size: 16px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 10px 0; margin-top: 10px; }
-            .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #666; }
-            @media print {
-              body { padding: 0; }
-              .no-print { display: none; }
-            }
+            ${styles}
           </style>
         </head>
         <body>
-          ${printRef.current.innerHTML}
+          ${headerContent}
+          ${printRef.current.innerHTML.replace(/<div[^>]*class="[^"]*header[^"]*"[^>]*>[\s\S]*?<\/div>/i, '')}
         </body>
       </html>
     `)
@@ -69,13 +76,25 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
 
   return (
     <>
-      <div className="no-print mb-4">
-        <button
-          onClick={handlePrint}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
-        >
-          🖨️ Print {type === 'sales' ? 'Invoice' : 'Purchase Order'}
-        </button>
+      <div className="no-print mb-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Paper Size:</label>
+          <select
+            value={selectedPaperSize}
+            onChange={(e) => setSelectedPaperSize(e.target.value as PrintPaperSize)}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          >
+            <option value="pos">POS/Receipt (80mm)</option>
+            <option value="a4">A4 (210mm)</option>
+            <option value="custom">Custom Size</option>
+          </select>
+          <button
+            onClick={handlePrint}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
+          >
+            🖨️ Print {type === 'sales' ? 'Invoice' : 'Purchase Order'}
+          </button>
+        </div>
       </div>
       <div ref={printRef} className="rounded-lg border border-slate-200 bg-white p-6">
         <div className="header">
@@ -154,7 +173,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
         </div>
 
         <div className="footer">
-          <p>Thank you for your business!</p>
+          <p>{printSettings?.footerText || 'Thank you for your business!'}</p>
         </div>
       </div>
     </>

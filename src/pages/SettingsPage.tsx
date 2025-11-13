@@ -27,6 +27,12 @@ import {
   initializeOrderNumbers,
   type OrderIdSettings,
 } from '../utils/orderIdSettings'
+import {
+  getPrintSettings,
+  setPrintSettings,
+  type PrintSettings,
+  type PrintPaperSize,
+} from '../utils/printSettings'
 
 export const SettingsPage = () => {
   const { lastSyncedAt, pendingCount } = useSync()
@@ -67,6 +73,19 @@ export const SettingsPage = () => {
     purchaseOrderLastNumber: 0,
   })
   const [isSavingOrderId, setIsSavingOrderId] = useState(false)
+  const [printSettings, setPrintSettingsState] = useState<PrintSettings>({
+    defaultPaperSize: 'a4',
+    customWidth: 80,
+    customHeight: 200,
+    fontSize: 'medium',
+    showLogo: false,
+    companyName: '',
+    companyAddress: '',
+    companyPhone: '',
+    companyEmail: '',
+    footerText: 'Thank you for your business!',
+  })
+  const [isSavingPrint, setIsSavingPrint] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -74,7 +93,13 @@ export const SettingsPage = () => {
     })
     loadUnits()
     loadOrderIdSettings()
+    loadPrintSettings()
   }, [])
+
+  const loadPrintSettings = async () => {
+    const settings = await getPrintSettings()
+    setPrintSettingsState(settings)
+  }
 
   const loadOrderIdSettings = async () => {
     const settings = await getOrderIdSettings()
@@ -868,6 +893,189 @@ export const SettingsPage = () => {
           </div>
 
           {isSavingOrderId && <p className="text-xs text-slate-500">Saving...</p>}
+        </div>
+      </section>
+
+      {/* Print Settings */}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+        <h2 className="text-lg font-semibold">Print Settings</h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          Configure default print settings for invoices and purchase orders. You can override these settings when printing.
+        </p>
+
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Default Paper Size</label>
+            <select
+              value={printSettings.defaultPaperSize}
+              onChange={async (e) => {
+                const newSettings = { ...printSettings, defaultPaperSize: e.target.value as PrintPaperSize }
+                setPrintSettingsState(newSettings)
+                setIsSavingPrint(true)
+                try {
+                  await setPrintSettings(newSettings)
+                } finally {
+                  setIsSavingPrint(false)
+                }
+              }}
+              className="w-full max-w-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            >
+              <option value="pos">POS/Receipt (80mm)</option>
+              <option value="a4">A4 (210mm)</option>
+              <option value="custom">Custom Size</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Default paper size for printing invoices and purchase orders
+            </p>
+          </div>
+
+          {printSettings.defaultPaperSize === 'custom' && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Custom Width (mm)</label>
+                <input
+                  type="number"
+                  min="50"
+                  max="500"
+                  value={printSettings.customWidth}
+                  onChange={async (e) => {
+                    const newSettings = { ...printSettings, customWidth: Number.parseInt(e.target.value) || 80 }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Custom Height (mm)</label>
+                <input
+                  type="number"
+                  min="50"
+                  max="1000"
+                  value={printSettings.customHeight}
+                  onChange={async (e) => {
+                    const newSettings = { ...printSettings, customHeight: Number.parseInt(e.target.value) || 200 }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+            <h3 className="text-sm font-semibold">Company Information (Optional)</h3>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Company Name</label>
+              <input
+                type="text"
+                value={printSettings.companyName || ''}
+                onChange={async (e) => {
+                  const newSettings = { ...printSettings, companyName: e.target.value }
+                  setPrintSettingsState(newSettings)
+                  setIsSavingPrint(true)
+                  try {
+                    await setPrintSettings(newSettings)
+                  } finally {
+                    setIsSavingPrint(false)
+                  }
+                }}
+                placeholder="Your Company Name"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Address</label>
+              <textarea
+                value={printSettings.companyAddress || ''}
+                onChange={async (e) => {
+                  const newSettings = { ...printSettings, companyAddress: e.target.value }
+                  setPrintSettingsState(newSettings)
+                  setIsSavingPrint(true)
+                  try {
+                    await setPrintSettings(newSettings)
+                  } finally {
+                    setIsSavingPrint(false)
+                  }
+                }}
+                rows={2}
+                placeholder="Company Address"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Phone</label>
+                <input
+                  type="text"
+                  value={printSettings.companyPhone || ''}
+                  onChange={async (e) => {
+                    const newSettings = { ...printSettings, companyPhone: e.target.value }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }}
+                  placeholder="+1 234 567 8900"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={printSettings.companyEmail || ''}
+                  onChange={async (e) => {
+                    const newSettings = { ...printSettings, companyEmail: e.target.value }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }}
+                  placeholder="info@company.com"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Footer Text</label>
+              <input
+                type="text"
+                value={printSettings.footerText || ''}
+                onChange={async (e) => {
+                  const newSettings = { ...printSettings, footerText: e.target.value }
+                  setPrintSettingsState(newSettings)
+                  setIsSavingPrint(true)
+                  try {
+                    await setPrintSettings(newSettings)
+                  } finally {
+                    setIsSavingPrint(false)
+                  }
+                }}
+                placeholder="Thank you for your business!"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+          </div>
+
+          {isSavingPrint && <p className="text-xs text-slate-500">Saving...</p>}
         </div>
       </section>
 
