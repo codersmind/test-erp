@@ -75,6 +75,7 @@ export interface PurchaseOrder extends BaseEntity {
   tax: number
   total: number
   notes?: string
+  addToInventory?: boolean // Whether items should be added to product inventory
 }
 
 export interface PurchaseOrderItem {

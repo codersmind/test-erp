@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 
 import { useCreatePurchaseOrder } from '../hooks/usePurchaseOrders'
 import { usePurchaseOrdersPaginated } from '../hooks/usePurchaseOrdersPaginated'
@@ -7,8 +7,10 @@ import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
 import { LazyProductPicker } from '../components/LazyProductPicker'
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
+import { InvoicePrint } from '../components/InvoicePrint'
+import { db } from '../db/database'
 import { getProduct, getCustomer } from '../db/localDataService'
-import type { Customer, Product } from '../db/schema'
+import type { Customer, Product, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 
 interface LineItem {
   productId: string
@@ -18,10 +20,72 @@ interface LineItem {
 
 const PAGE_SIZE = 20
 
+// Component to render a purchase order row with items
+const PurchaseOrderRow = ({ order }: { order: PurchaseOrder }) => {
+  const [items, setItems] = useState<PurchaseOrderItem[]>([])
+  const [showPrint, setShowPrint] = useState(false)
+
+  useEffect(() => {
+    const loadData = async () => {
+      const orderItems = await db.purchaseOrderItems.where('orderId').equals(order.id).toArray()
+      setItems(orderItems)
+    }
+    loadData()
+  }, [order.id])
+
+  return (
+    <>
+      <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+        <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-50">
+          {order.id.slice(0, 8)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+          {order.supplierName}
+        </td>
+        <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+          {new Date(order.issuedDate).toLocaleDateString()}
+        </td>
+        <td className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+          {items.length} item{items.length !== 1 ? 's' : ''}
+        </td>
+        <td className="whitespace-nowrap px-3 py-4 text-right text-sm text-slate-500 dark:text-slate-400">
+          {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+        </td>
+        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+          <button
+            type="button"
+            onClick={() => setShowPrint(true)}
+            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+          >
+            Print
+          </button>
+        </td>
+      </tr>
+      {showPrint && items.length > 0 && (
+        <tr>
+          <td colSpan={6} className="px-3 py-4">
+            <InvoicePrint order={order} items={items} supplierName={order.supplierName} type="purchase" />
+            <button
+              onClick={() => setShowPrint(false)}
+              className="mt-2 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400"
+            >
+              Close
+            </button>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 export const PurchaseOrdersPage = () => {
   const [page, setPage] = useState(1)
   const { data: paginatedData, isPending } = usePurchaseOrdersPaginated(page, PAGE_SIZE)
-  const [form, setForm] = useState({ supplierId: '', lineItems: [{ productId: '', quantity: 1, unitCost: 0 }] })
+  const [form, setForm] = useState({
+    supplierId: '',
+    lineItems: [{ productId: '', quantity: 1, unitCost: 0 }],
+    addToInventory: true, // Default to true
+  })
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
@@ -46,10 +110,20 @@ export const PurchaseOrdersPage = () => {
   }
 
   const removeLineItem = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      lineItems: prev.lineItems.filter((_, i) => i !== index),
-    }))
+    setForm((prev) => {
+      const updatedItems = prev.lineItems.filter((_, i) => i !== index)
+      // If no items remain, add one empty item
+      if (updatedItems.length === 0) {
+        return {
+          ...prev,
+          lineItems: [{ productId: '', quantity: 1, unitCost: 0 }],
+        }
+      }
+      return {
+        ...prev,
+        lineItems: updatedItems,
+      }
+    })
   }
 
   const handleProductSelect = async (index: number, productId: string) => {
@@ -90,8 +164,9 @@ export const PurchaseOrdersPage = () => {
         lineTotal: item.quantity * item.unitCost,
       })),
       notes: 'Captured offline',
+      addToInventory: form.addToInventory,
     })
-    setForm({ supplierId: '', lineItems: [{ productId: '', quantity: 1, unitCost: 0 }] })
+    setForm({ supplierId: '', lineItems: [{ productId: '', quantity: 1, unitCost: 0 }], addToInventory: true })
   }
 
   const handleSupplierCreated = (supplier: Customer) => {
@@ -194,62 +269,89 @@ export const PurchaseOrdersPage = () => {
                     </div>
                   </div>
                   <div className="flex items-end sm:col-span-1">
-                    {form.lineItems.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeLineItem(index)}
-                        className="w-full rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
-                      >
-                        ×
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeLineItem(index)}
+                      className="w-full rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                      title="Remove item"
+                    >
+                      ×
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
-            <p className="text-lg font-semibold">Total: {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</p>
-            <button
-              type="submit"
-              disabled={createPurchaseOrderMutation.isPending || !form.supplierId || totalAmount === 0}
-              className="w-full rounded-md bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-auto"
-            >
-              {createPurchaseOrderMutation.isPending ? 'Saving…' : 'Save purchase'}
-            </button>
+          <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="addToInventory"
+                checked={form.addToInventory}
+                onChange={(e) => setForm((prev) => ({ ...prev, addToInventory: e.target.checked }))}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900"
+              />
+              <label htmlFor="addToInventory" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Add items to product inventory
+              </label>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {form.addToInventory
+                ? 'Items will be added to product stock when order is created.'
+                : 'Items will be recorded in purchase order only, without updating product stock.'}
+            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-semibold">Total: {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</p>
+              <button
+                type="submit"
+                disabled={createPurchaseOrderMutation.isPending || !form.supplierId || totalAmount === 0}
+                className="w-full rounded-md bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-auto"
+              >
+                {createPurchaseOrderMutation.isPending ? 'Saving…' : 'Save purchase'}
+              </button>
+            </div>
           </div>
         </form>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <h2 className="text-lg font-semibold">Recent purchase orders</h2>
-        <ul className="mt-4 divide-y divide-slate-200 text-sm dark:divide-slate-800">
-          {isPending ? (
-            <li className="py-6 text-center text-slate-500">Loading purchases…</li>
-          ) : orders.length ? (
-            orders.map((order) => (
-              <li key={order.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold">
-                    {order.supplierName} · {order.status}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Total: {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-                  </p>
-                </div>
-                <span className="text-xs text-slate-400">
-                  {new Date(order.updatedAt).toLocaleString(undefined, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                </span>
-              </li>
-            ))
-          ) : (
-            <li className="py-6 text-center text-slate-500">No purchase orders yet.</li>
-          )}
-        </ul>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+            <thead>
+              <tr>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Order ID</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Supplier</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Date</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Items</th>
+                <th className="px-3 py-3.5 text-right text-sm font-semibold text-slate-600 dark:text-slate-300">Total</th>
+                <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
+              {isPending ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    Loading purchase orders…
+                  </td>
+                </tr>
+              ) : orders.length ? (
+                orders.map((order) => (
+                  <PurchaseOrderRow key={order.id} order={order} />
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    No purchase orders yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
         {totalPages > 1 && (
           <div className="mt-4">
             <Pagination

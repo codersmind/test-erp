@@ -127,6 +127,7 @@ const mapPurchaseOrderRow = (row: Record<string, unknown>): PurchaseOrder => ({
   tax: toNumberValue(row.tax),
   total: toNumberValue(row.total),
   notes: toOptionalString(row.notes),
+  addToInventory: row.addToInventory != null ? toBoolean(toNumberValue(row.addToInventory)) : true, // Default to true if not set
 })
 
 const mapPurchaseOrderItemRow = (row: Record<string, unknown>): PurchaseOrderItem => ({
@@ -215,7 +216,8 @@ const tableCreators = [
       subtotal REAL,
       tax REAL,
       total REAL,
-      notes TEXT
+      notes TEXT,
+      addToInventory INTEGER
     );`,
   `CREATE TABLE purchase_order_items (
       id TEXT PRIMARY KEY,
@@ -382,7 +384,7 @@ const insertSalesOrderItems = (db: Database, items: SalesOrderItem[]) => {
 
 const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => {
   const stmt = db.prepare(
-    `INSERT INTO purchase_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO purchase_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -394,7 +396,8 @@ const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => 
       subtotal=excluded.subtotal,
       tax=excluded.tax,
       total=excluded.total,
-      notes=excluded.notes`,
+      notes=excluded.notes,
+      addToInventory=excluded.addToInventory`,
   )
   purchaseOrders.forEach((order) => {
     stmt.run([
@@ -411,6 +414,7 @@ const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => 
       order.tax,
       order.total,
       order.notes ?? null,
+      order.addToInventory ?? true ? 1 : 0,
     ])
   })
   stmt.free()

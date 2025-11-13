@@ -5,6 +5,8 @@ import { useCreateSalesOrder } from '../hooks/useSalesOrders'
 import { useSalesOrdersPaginated } from '../hooks/useSalesOrdersPaginated'
 import { db } from '../db/database'
 import { ReceiptPreview } from '../components/ReceiptPreview'
+import { InvoicePrint } from '../components/InvoicePrint'
+import type { SalesOrder, SalesOrderItem } from '../db/schema'
 import { CustomerQuickCreateModal } from '../components/CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
 import { LazyProductPicker } from '../components/LazyProductPicker'
@@ -23,6 +25,67 @@ interface LineItem {
 }
 
 const PAGE_SIZE = 20
+
+// Component to render a sales order row with items
+const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
+  const [items, setItems] = useState<SalesOrderItem[]>([])
+  const [customer, setCustomer] = useState<Customer | null>(null)
+  const [showPrint, setShowPrint] = useState(false)
+
+  useEffect(() => {
+    const loadData = async () => {
+      const orderItems = await db.salesOrderItems.where('orderId').equals(order.id).toArray()
+      setItems(orderItems)
+      const cust = await getCustomer(order.customerId)
+      setCustomer(cust || null)
+    }
+    loadData()
+  }, [order.id, order.customerId])
+
+  return (
+    <>
+      <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+        <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-50">
+          {order.id.slice(0, 8)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+          {customer?.name ?? 'N/A'}
+        </td>
+        <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+          {new Date(order.issuedDate).toLocaleDateString()}
+        </td>
+        <td className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+          {items.length} item{items.length !== 1 ? 's' : ''}
+        </td>
+        <td className="whitespace-nowrap px-3 py-4 text-right text-sm text-slate-500 dark:text-slate-400">
+          {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+        </td>
+        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+          <button
+            type="button"
+            onClick={() => setShowPrint(true)}
+            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+          >
+            Print
+          </button>
+        </td>
+      </tr>
+      {showPrint && items.length > 0 && (
+        <tr>
+          <td colSpan={6} className="px-3 py-4">
+            <InvoicePrint order={order} items={items} customerName={customer?.name} type="sales" />
+            <button
+              onClick={() => setShowPrint(false)}
+              className="mt-2 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400"
+            >
+              Close
+            </button>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
 
 export const SalesOrdersPage = () => {
   const [page, setPage] = useState(1)
@@ -684,30 +747,41 @@ export const SalesOrdersPage = () => {
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <h2 className="text-lg font-semibold">Recent sales orders</h2>
-        <ul className="mt-4 divide-y divide-slate-200 text-sm dark:divide-slate-800">
-          {isPending ? (
-            <li className="py-6 text-center text-slate-500">Loading orders…</li>
-          ) : orders.length ? (
-            orders.map((order) => (
-              <li key={order.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold">
-                    Order #{order.id.slice(-6)} · {order.status}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })} · Tax:{' '}
-                    {order.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-                  </p>
-                </div>
-                <span className="text-xs text-slate-400">
-                  {new Date(order.updatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                </span>
-              </li>
-            ))
-          ) : (
-            <li className="py-6 text-center text-slate-500">No sales orders yet.</li>
-          )}
-        </ul>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+            <thead>
+              <tr>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Order ID</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Customer</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Date</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">Items</th>
+                <th className="px-3 py-3.5 text-right text-sm font-semibold text-slate-600 dark:text-slate-300">Total</th>
+                <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
+              {isPending ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    Loading sales orders…
+                  </td>
+                </tr>
+              ) : orders.length ? (
+                orders.map((order) => (
+                  <SalesOrderRow key={order.id} order={order} />
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    No sales orders yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
         {totalPages > 1 && (
           <div className="mt-4">
             <Pagination

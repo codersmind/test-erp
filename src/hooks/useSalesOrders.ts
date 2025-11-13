@@ -21,6 +21,8 @@ export const useCreateSalesOrder = () => {
         previous ? [salesOrder, ...previous] : [salesOrder],
       )
       queryClient.invalidateQueries({ queryKey: SALES_ORDERS_KEY })
+      // Invalidate products queries to refresh stock after sales order decreases stock
+      queryClient.invalidateQueries({ queryKey: ['products'] })
     },
   })
 }

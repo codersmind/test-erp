@@ -51,6 +51,7 @@ type PurchaseOrderInput = {
   expectedDate?: string
   notes?: string
   items: Array<Omit<PurchaseOrderItem, 'id' | 'orderId' | 'lineTotal'> & { lineTotal?: number }>
+  addToInventory?: boolean // Whether items should be added to product inventory
 }
 
 const enqueueChange = async (entity: EntityType, entityId: string, action: SyncAction, payload: unknown) => {
@@ -398,7 +399,8 @@ export const getSalesOrderWithItems = async (id: string) => {
 export const createSalesOrder = async (
   input: SalesOrderInput & { tenantId?: string; taxRate?: number; taxSettings?: import('../utils/taxSettings').TaxSettings },
 ) => {
-  const id = nanoid()
+  const { generateOrderId } = await import('../utils/orderIdSettings')
+  const id = await generateOrderId('sales')
   const timestamp = nowIso()
   const issuedDate = input.issuedDate ?? timestamp
   const status = input.status ?? 'draft'
@@ -466,10 +468,15 @@ export const createSalesOrder = async (
     notes: input.notes,
   }
 
-  await db.transaction('rw', db.salesOrders, db.salesOrderItems, db.syncQueue, async () => {
+  await db.transaction('rw', db.salesOrders, db.salesOrderItems, db.products, db.syncQueue, async () => {
     await db.salesOrders.add(salesOrder)
     await db.salesOrderItems.bulkAdd(items)
     await enqueueChange('salesOrder', id, 'create', { salesOrder, items })
+
+    // Update product stock - decrease stock for each item sold
+    for (const item of items) {
+      await adjustProductStock(item.productId, -item.quantity)
+    }
   })
 
   return { salesOrder, items }
@@ -518,7 +525,8 @@ export const listPurchaseOrdersPaginated = async (page: number, pageSize: number
 }
 
 export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId?: string }) => {
-  const id = nanoid()
+  const { generateOrderId } = await import('../utils/orderIdSettings')
+  const id = await generateOrderId('purchase')
   const timestamp = nowIso()
   const issuedDate = input.issuedDate ?? timestamp
   const status = input.status ?? 'draft'
@@ -557,12 +565,20 @@ export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId
     tax: 0,
     total: totals.subtotal,
     notes: input.notes,
+    addToInventory: input.addToInventory ?? true, // Default to true for backward compatibility
   }
 
-  await db.transaction('rw', db.purchaseOrders, db.purchaseOrderItems, db.syncQueue, async () => {
+  await db.transaction('rw', db.purchaseOrders, db.purchaseOrderItems, db.products, db.syncQueue, async () => {
     await db.purchaseOrders.add(purchaseOrder)
     await db.purchaseOrderItems.bulkAdd(items)
     await enqueueChange('purchaseOrder', id, 'create', { purchaseOrder, items })
+
+    // Update product stock - increase stock for each item only if addToInventory is true
+    if (purchaseOrder.addToInventory) {
+      for (const item of items) {
+        await adjustProductStock(item.productId, item.quantity)
+      }
+    }
   })
 
   return { purchaseOrder, items }

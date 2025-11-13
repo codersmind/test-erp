@@ -63,17 +63,18 @@ export const ProductQuickCreateModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+        className="flex max-h-[90vh] w-full max-w-md flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4">
+        <div className="flex-shrink-0 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4">
           <h3 className="text-lg font-semibold">Create new product</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Quickly add a product to continue with your sale
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6">
-          <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+          <div className="custom-scrollbar flex-1 overflow-y-auto p-4 sm:p-6">
+            <div className="space-y-4">
             <label>
               <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">
                 Product name <span className="text-red-500">*</span>
@@ -137,21 +138,24 @@ export const ProductQuickCreateModal = ({
               </label>
             </div>
           </div>
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createProduct.isPending || !form.title.trim()}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
-            >
-              {createProduct.isPending ? 'Creating…' : 'Create & Add'}
-            </button>
+          </div>
+          <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/50 sm:px-6 sm:py-4">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createProduct.isPending || !form.title.trim()}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+              >
+                {createProduct.isPending ? 'Creating…' : 'Create & Add'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

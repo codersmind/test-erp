@@ -21,6 +21,8 @@ export const useCreatePurchaseOrder = () => {
         previous ? [purchaseOrder, ...previous] : [purchaseOrder],
       )
       queryClient.invalidateQueries({ queryKey: PURCHASE_ORDERS_KEY })
+      // Invalidate products queries to refresh stock after purchase order updates stock
+      queryClient.invalidateQueries({ queryKey: ['products'] })
     },
   })
 }

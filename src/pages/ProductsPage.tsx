@@ -9,7 +9,7 @@ import { Pagination } from '../components/Pagination'
 import { FormField } from '../components/FormField'
 import type { Product } from '../db/schema'
 import { getAllUnits, type Unit } from '../utils/unitSettings'
-import { productSchema, type ProductFormValues } from '../utils/validationSchemas'
+import { productSchema } from '../utils/validationSchemas'
 import { useSettingsStore } from '../store/useSettingsStore'
 
 // Component to handle barcode scanner inside Formik context
