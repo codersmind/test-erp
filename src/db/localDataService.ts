@@ -14,7 +14,7 @@ import type {
 } from './schema'
 import { DEFAULT_TENANT_ID, nowIso } from './utils'
 
-type CustomerInput = Pick<Customer, 'name' | 'email' | 'phone' | 'address' | 'notes'>
+type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'notes'>
 
 type ProductInput = Pick<
   Product,
@@ -54,6 +54,13 @@ const enqueueChange = async (entity: EntityType, entityId: string, action: SyncA
 
 export const listCustomers = () => db.customers.orderBy('name').filter((customer) => !customer.isArchived).toArray()
 
+export const listCustomersByType = (type: 'customer' | 'supplier') =>
+  db.customers
+    .where('type')
+    .equals(type)
+    .and((customer) => !customer.isArchived)
+    .sortBy('name')
+
 export const getCustomer = (id: string) => db.customers.get(id)
 
 export const createCustomer = async (input: CustomerInput & { tenantId?: string }) => {
@@ -67,6 +74,7 @@ export const createCustomer = async (input: CustomerInput & { tenantId?: string 
     version: 1,
     balance: 0,
     isArchived: false,
+    type: input.type ?? 'customer',
     name: input.name,
     email: input.email,
     phone: input.phone,
@@ -211,7 +219,9 @@ export const getSalesOrderWithItems = async (id: string) => {
   return { order, items }
 }
 
-export const createSalesOrder = async (input: SalesOrderInput & { tenantId?: string }) => {
+export const createSalesOrder = async (
+  input: SalesOrderInput & { tenantId?: string; taxRate?: number },
+) => {
   const id = nanoid()
   const timestamp = nowIso()
   const issuedDate = input.issuedDate ?? timestamp
@@ -238,6 +248,10 @@ export const createSalesOrder = async (input: SalesOrderInput & { tenantId?: str
     { subtotal: 0 },
   )
 
+  const taxRate = input.taxRate ?? 0
+  const tax = totals.subtotal * (taxRate / 100)
+  const total = totals.subtotal + tax
+
   const salesOrder: SalesOrder = {
     id,
     tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
@@ -249,8 +263,8 @@ export const createSalesOrder = async (input: SalesOrderInput & { tenantId?: str
     issuedDate,
     dueDate: input.dueDate,
     subtotal: totals.subtotal,
-    tax: 0,
-    total: totals.subtotal,
+    tax,
+    total,
     notes: input.notes,
   }
 

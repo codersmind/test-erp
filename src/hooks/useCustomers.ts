@@ -21,6 +21,7 @@ export const useCreateCustomer = () => {
         previous ? [...previous, customer] : [customer],
       )
       queryClient.invalidateQueries({ queryKey: CUSTOMERS_KEY })
+      queryClient.invalidateQueries({ queryKey: ['customers', customer.type] })
     },
   })
 }

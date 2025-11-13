@@ -1,4 +1,4 @@
-export type EntityType = 'customer' | 'product' | 'salesOrder' | 'purchaseOrder'
+export type EntityType = 'customer' | 'product' | 'salesOrder' | 'purchaseOrder' | 'invoice' | 'payment'
 
 export interface BaseEntity {
   id: string
@@ -8,8 +8,11 @@ export interface BaseEntity {
   version: number
 }
 
+export type CustomerType = 'customer' | 'supplier'
+
 export interface Customer extends BaseEntity {
   name: string
+  type: CustomerType
   email?: string
   phone?: string
   address?: string
@@ -85,5 +88,34 @@ export interface SyncRecord {
   payload: unknown
   timestamp: string
   syncedAt?: string
+}
+
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
+
+export interface Invoice extends BaseEntity {
+  invoiceNumber: string
+  salesOrderId: string
+  customerId: string
+  status: InvoiceStatus
+  issuedDate: string
+  dueDate: string
+  subtotal: number
+  tax: number
+  total: number
+  paidAmount: number
+  balance: number
+  notes?: string
+}
+
+export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'check' | 'other'
+
+export interface Payment extends BaseEntity {
+  invoiceId: string
+  customerId: string
+  amount: number
+  paymentDate: string
+  method: PaymentMethod
+  reference?: string
+  notes?: string
 }
 
