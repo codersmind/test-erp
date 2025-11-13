@@ -1,14 +1,17 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
-import { useCustomersByType } from '../hooks/useCustomersByType'
-import { useProducts } from '../hooks/useProducts'
-import { useCreateSalesOrder, useSalesOrders } from '../hooks/useSalesOrders'
+import { useCreateSalesOrder } from '../hooks/useSalesOrders'
+import { useSalesOrdersPaginated } from '../hooks/useSalesOrdersPaginated'
 import { db } from '../db/database'
 import { ReceiptPreview } from '../components/ReceiptPreview'
 import { CustomerQuickCreateModal } from '../components/CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
+import { LazyProductPicker } from '../components/LazyProductPicker'
+import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
+import { Pagination } from '../components/Pagination'
 import { getTaxRate, calculateTax } from '../utils/taxSettings'
+import { getProduct } from '../db/localDataService'
 import type { Customer, Product } from '../db/schema'
 
 interface LineItem {
@@ -18,10 +21,11 @@ interface LineItem {
   discount: number
 }
 
+const PAGE_SIZE = 20
+
 export const SalesOrdersPage = () => {
-  const { data: customers } = useCustomersByType('customer')
-  const { data: products } = useProducts()
-  const { data: orders, isPending } = useSalesOrders()
+  const [page, setPage] = useState(1)
+  const { data: paginatedData, isPending } = useSalesOrdersPaginated(page, PAGE_SIZE)
   const [form, setForm] = useState({
     customerId: '',
     lineItems: [{ productId: '', quantity: 1, unitPrice: 0, discount: 0 }],
@@ -39,6 +43,9 @@ export const SalesOrdersPage = () => {
     })
   }, [])
 
+  const orders = paginatedData?.items ?? []
+  const total = paginatedData?.total ?? 0
+  const totalPages = paginatedData?.totalPages ?? 0
   const latestOrder = orders?.[0]
   const latestItems = useLiveQuery(
     () => (latestOrder ? db.salesOrderItems.where('orderId').equals(latestOrder.id).toArray() : []),
@@ -46,24 +53,17 @@ export const SalesOrdersPage = () => {
     [],
   )
 
-  const customerOptions = useMemo(
-    () =>
-      (customers ?? []).map((customer) => ({
-        value: customer.id,
-        label: customer.name,
-      })),
-    [customers],
-  )
-
-  const productOptions = useMemo(
-    () =>
-      (products ?? []).map((product) => ({
-        value: product.id,
-        label: `${product.title} - ${product.price.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}`,
-        product,
-      })),
-    [products],
-  )
+  const handleProductSelect = async (index: number, productId: string) => {
+    if (!productId) {
+      setSelectedProductIndex(index)
+      setShowProductModal(true)
+      return
+    }
+    const product = await getProduct(productId)
+    if (product) {
+      updateLineItem(index, { productId, unitPrice: product.price })
+    }
+  }
 
   const updateLineItem = (index: number, updates: Partial<LineItem>) => {
     setForm((prev) => ({
@@ -84,18 +84,6 @@ export const SalesOrdersPage = () => {
       ...prev,
       lineItems: prev.lineItems.filter((_, i) => i !== index),
     }))
-  }
-
-  const handleProductSelect = (index: number, productId: string) => {
-    if (!productId) {
-      setSelectedProductIndex(index)
-      setShowProductModal(true)
-      return
-    }
-    const product = products?.find((p) => p.id === productId)
-    if (product) {
-      updateLineItem(index, { productId, unitPrice: product.price })
-    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -155,26 +143,14 @@ export const SalesOrdersPage = () => {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Customer</label>
-            <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-              <select
+            <div className="mt-1">
+              <LazyCustomerPicker
                 value={form.customerId}
-                onChange={(event) => setForm((prev) => ({ ...prev, customerId: event.target.value }))}
-                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              >
-                <option value="">Select customer</option>
-                {customerOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setShowCustomerModal(true)}
-                className="rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 sm:px-4"
-              >
-                + New
-              </button>
+                onChange={(customerId) => setForm((prev) => ({ ...prev, customerId }))}
+                onQuickCreate={() => setShowCustomerModal(true)}
+                type="customer"
+                placeholder="Search customers..."
+              />
             </div>
           </div>
 
@@ -197,29 +173,16 @@ export const SalesOrdersPage = () => {
                 >
                   <div className="sm:col-span-4">
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Product</label>
-                    <div className="mt-1 flex gap-2">
-                      <select
+                    <div className="mt-1">
+                      <LazyProductPicker
                         value={item.productId}
-                        onChange={(event) => handleProductSelect(index, event.target.value)}
-                        className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                      >
-                        <option value="">Select product</option>
-                        {productOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => {
+                        onChange={(productId) => handleProductSelect(index, productId)}
+                        onQuickCreate={() => {
                           setSelectedProductIndex(index)
                           setShowProductModal(true)
                         }}
-                        className="rounded-md border border-blue-600 bg-blue-50 px-2 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-900/20 dark:text-blue-400"
-                      >
-                        + New
-                      </button>
+                        placeholder="Search products..."
+                      />
                     </div>
                   </div>
                   <div className="sm:col-span-2">
@@ -334,7 +297,7 @@ export const SalesOrdersPage = () => {
         <ul className="mt-4 divide-y divide-slate-200 text-sm dark:divide-slate-800">
           {isPending ? (
             <li className="py-6 text-center text-slate-500">Loading orders…</li>
-          ) : orders?.length ? (
+          ) : orders.length ? (
             orders.map((order) => (
               <li key={order.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -355,6 +318,17 @@ export const SalesOrdersPage = () => {
             <li className="py-6 text-center text-slate-500">No sales orders yet.</li>
           )}
         </ul>
+        {totalPages > 1 && (
+          <div className="mt-4">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              pageSize={PAGE_SIZE}
+              total={total}
+            />
+          </div>
+        )}
       </section>
 
       {latestOrder && latestItems && latestItems.length > 0 && (

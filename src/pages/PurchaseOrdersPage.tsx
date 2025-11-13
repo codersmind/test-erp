@@ -1,10 +1,13 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 
-import { useCustomersByType } from '../hooks/useCustomersByType'
-import { useProducts } from '../hooks/useProducts'
-import { useCreatePurchaseOrder, usePurchaseOrders } from '../hooks/usePurchaseOrders'
+import { useCreatePurchaseOrder } from '../hooks/usePurchaseOrders'
+import { usePurchaseOrdersPaginated } from '../hooks/usePurchaseOrdersPaginated'
 import { CustomerQuickCreateModal } from '../components/CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
+import { LazyProductPicker } from '../components/LazyProductPicker'
+import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
+import { Pagination } from '../components/Pagination'
+import { getProduct, getCustomer } from '../db/localDataService'
 import type { Customer, Product } from '../db/schema'
 
 interface LineItem {
@@ -13,34 +16,20 @@ interface LineItem {
   unitCost: number
 }
 
+const PAGE_SIZE = 20
+
 export const PurchaseOrdersPage = () => {
-  const { data: suppliers } = useCustomersByType('supplier')
-  const { data: products } = useProducts()
-  const { data: orders, isPending } = usePurchaseOrders()
+  const [page, setPage] = useState(1)
+  const { data: paginatedData, isPending } = usePurchaseOrdersPaginated(page, PAGE_SIZE)
   const [form, setForm] = useState({ supplierId: '', lineItems: [{ productId: '', quantity: 1, unitCost: 0 }] })
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const createPurchaseOrderMutation = useCreatePurchaseOrder()
 
-  const supplierOptions = useMemo(
-    () =>
-      (suppliers ?? []).map((supplier) => ({
-        value: supplier.id,
-        label: supplier.name,
-      })),
-    [suppliers],
-  )
-
-  const productOptions = useMemo(
-    () =>
-      (products ?? []).map((product) => ({
-        value: product.id,
-        label: `${product.title} - ${product.cost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}`,
-        product,
-      })),
-    [products],
-  )
+  const orders = paginatedData?.items ?? []
+  const total = paginatedData?.total ?? 0
+  const totalPages = paginatedData?.totalPages ?? 0
 
   const updateLineItem = (index: number, updates: Partial<LineItem>) => {
     setForm((prev) => ({
@@ -63,13 +52,13 @@ export const PurchaseOrdersPage = () => {
     }))
   }
 
-  const handleProductSelect = (index: number, productId: string) => {
+  const handleProductSelect = async (index: number, productId: string) => {
     if (!productId) {
       setSelectedProductIndex(index)
       setShowProductModal(true)
       return
     }
-    const product = products?.find((p) => p.id === productId)
+    const product = await getProduct(productId)
     if (product) {
       updateLineItem(index, { productId, unitCost: product.cost })
     }
@@ -81,19 +70,24 @@ export const PurchaseOrdersPage = () => {
       setShowSupplierModal(true)
       return
     }
+    if (form.lineItems.some((item) => !item.productId || item.quantity <= 0 || item.unitCost <= 0)) {
+      alert('Please ensure all line items have a selected product, valid quantity, and unit cost.')
+      return
+    }
 
-    const supplier = suppliers?.find((s) => s.id === form.supplierId)
-    if (!supplier) return
-
-    const validItems = form.lineItems.filter((item) => item.productId && item.quantity > 0 && item.unitCost > 0)
-    if (validItems.length === 0) return
+    const supplier = await getCustomer(form.supplierId)
+    if (!supplier) {
+      alert('Selected supplier not found.')
+      return
+    }
 
     await createPurchaseOrderMutation.mutateAsync({
       supplierName: supplier.name,
-      items: validItems.map((item) => ({
+      items: form.lineItems.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
         unitCost: item.unitCost,
+        lineTotal: item.quantity * item.unitCost,
       })),
       notes: 'Captured offline',
     })
@@ -102,6 +96,7 @@ export const PurchaseOrdersPage = () => {
 
   const handleSupplierCreated = (supplier: Customer) => {
     setForm((prev) => ({ ...prev, supplierId: supplier.id }))
+    setShowSupplierModal(false)
   }
 
   const handleProductCreated = (product: Product) => {
@@ -111,16 +106,12 @@ export const PurchaseOrdersPage = () => {
     }
   }
 
-  const totalAmount = useMemo(
-    () =>
-      form.lineItems.reduce((sum, item) => {
-        if (item.productId && item.quantity > 0 && item.unitCost > 0) {
-          return sum + item.quantity * item.unitCost
-        }
-        return sum
-      }, 0),
-    [form.lineItems],
-  )
+  const totalAmount = form.lineItems.reduce((sum, item) => {
+    if (item.productId && item.quantity > 0 && item.unitCost > 0) {
+      return sum + item.quantity * item.unitCost
+    }
+    return sum
+  }, 0)
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
@@ -129,26 +120,14 @@ export const PurchaseOrdersPage = () => {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Supplier</label>
-            <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-              <select
+            <div className="mt-1">
+              <LazyCustomerPicker
                 value={form.supplierId}
-                onChange={(event) => setForm((prev) => ({ ...prev, supplierId: event.target.value }))}
-                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              >
-                <option value="">Select supplier</option>
-                {supplierOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setShowSupplierModal(true)}
-                className="rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 sm:px-4"
-              >
-                + New
-              </button>
+                onChange={(supplierId) => setForm((prev) => ({ ...prev, supplierId }))}
+                onQuickCreate={() => setShowSupplierModal(true)}
+                type="supplier"
+                placeholder="Search suppliers..."
+              />
             </div>
           </div>
 
@@ -169,58 +148,50 @@ export const PurchaseOrdersPage = () => {
                   key={index}
                   className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:grid-cols-12"
                 >
-                  <div className="sm:col-span-5">
+                  <div className="sm:col-span-4">
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Product</label>
-                    <div className="mt-1 flex gap-2">
-                      <select
+                    <div className="mt-1">
+                      <LazyProductPicker
                         value={item.productId}
-                        onChange={(event) => handleProductSelect(index, event.target.value)}
-                        className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                      >
-                        <option value="">Select product</option>
-                        {productOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => {
+                        onChange={(productId) => handleProductSelect(index, productId)}
+                        onQuickCreate={() => {
                           setSelectedProductIndex(index)
                           setShowProductModal(true)
                         }}
-                        className="rounded-md border border-blue-600 bg-blue-50 px-2 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-900/20 dark:text-blue-400"
-                      >
-                        + New
-                      </button>
+                        placeholder="Search products..."
+                      />
                     </div>
                   </div>
                   <div className="sm:col-span-3">
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Quantity</label>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Qty</label>
                     <input
                       type="number"
                       min="1"
                       value={item.quantity}
-                      onChange={(event) =>
-                        updateLineItem(index, { quantity: Number.parseInt(event.target.value) || 1 })
-                      }
+                      onChange={(event) => updateLineItem(index, { quantity: Number.parseInt(event.target.value) || 1 })}
                       className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     />
                   </div>
                   <div className="sm:col-span-3">
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Cost</label>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Unit Cost</label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={item.unitCost || ''}
-                      onChange={(event) =>
-                        updateLineItem(index, { unitCost: Number.parseFloat(event.target.value) || 0 })
-                      }
+                      onChange={(event) => updateLineItem(index, { unitCost: Number.parseFloat(event.target.value) || 0 })}
                       className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                       placeholder="0.00"
                     />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Total</label>
+                    <div className="mt-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
+                      {(item.quantity * item.unitCost).toLocaleString(undefined, {
+                        style: 'currency',
+                        currency: 'USD',
+                      })}
+                    </div>
                   </div>
                   <div className="flex items-end sm:col-span-1">
                     {form.lineItems.length > 1 && (
@@ -238,13 +209,8 @@ export const PurchaseOrdersPage = () => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-right sm:text-left">
-              <p className="text-sm text-slate-600 dark:text-slate-400">Total</p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-50">
-                {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-              </p>
-            </div>
+          <div className="flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
+            <p className="text-lg font-semibold">Total: {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</p>
             <button
               type="submit"
               disabled={createPurchaseOrderMutation.isPending || !form.supplierId || totalAmount === 0}
@@ -261,7 +227,7 @@ export const PurchaseOrdersPage = () => {
         <ul className="mt-4 divide-y divide-slate-200 text-sm dark:divide-slate-800">
           {isPending ? (
             <li className="py-6 text-center text-slate-500">Loading purchases…</li>
-          ) : orders?.length ? (
+          ) : orders.length ? (
             orders.map((order) => (
               <li key={order.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -284,6 +250,17 @@ export const PurchaseOrdersPage = () => {
             <li className="py-6 text-center text-slate-500">No purchase orders yet.</li>
           )}
         </ul>
+        {totalPages > 1 && (
+          <div className="mt-4">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              pageSize={PAGE_SIZE}
+              total={total}
+            />
+          </div>
+        )}
       </section>
 
       <CustomerQuickCreateModal

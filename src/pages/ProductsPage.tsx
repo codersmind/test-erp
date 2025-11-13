@@ -1,12 +1,18 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 
-import { useAdjustProductStock, useCreateProduct, useProducts } from '../hooks/useProducts'
+import { useAdjustProductStock, useCreateProduct } from '../hooks/useProducts'
+import { useProductsPaginated } from '../hooks/useProductsPaginated'
 import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { ProductEditModal } from '../components/ProductEditModal'
+import { Pagination } from '../components/Pagination'
 import type { Product } from '../db/schema'
 
+const PAGE_SIZE = 20
+
 export const ProductsPage = () => {
-  const { data: products, isPending } = useProducts()
+  const [page, setPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const { data: paginatedData, isPending } = useProductsPaginated(page, PAGE_SIZE, searchQuery)
   const createProduct = useCreateProduct()
   const adjustStock = useAdjustProductStock()
   const [form, setForm] = useState({
@@ -18,26 +24,12 @@ export const ProductsPage = () => {
     description: '',
     reorderLevel: '',
   })
-  const [searchQuery, setSearchQuery] = useState('')
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
 
   useBarcodeScanner((code) => {
     setForm((prev) => ({ ...prev, barcode: code }))
   })
-
-  const filteredProducts = useMemo(() => {
-    if (!products) return []
-    if (!searchQuery.trim()) return products
-    const query = searchQuery.toLowerCase()
-    return products.filter(
-      (product) =>
-        product.title.toLowerCase().includes(query) ||
-        product.sku.toLowerCase().includes(query) ||
-        product.barcode?.toLowerCase().includes(query) ||
-        product.description?.toLowerCase().includes(query),
-    )
-  }, [products, searchQuery])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -73,6 +65,15 @@ export const ProductsPage = () => {
     setEditingProduct(product)
     setShowEditModal(true)
   }
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query)
+    setPage(1) // Reset to first page when searching
+  }
+
+  const products = paginatedData?.items ?? []
+  const total = paginatedData?.total ?? 0
+  const totalPages = paginatedData?.totalPages ?? 0
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
@@ -176,7 +177,7 @@ export const ProductsPage = () => {
             <input
               type="search"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => handleSearchChange(event.target.value)}
               placeholder="Search products..."
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
@@ -205,8 +206,8 @@ export const ProductsPage = () => {
                     Loading inventory…
                   </td>
                 </tr>
-              ) : filteredProducts.length ? (
-                filteredProducts.map((product) => (
+              ) : products.length ? (
+                products.map((product) => (
                   <tr key={product.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <td className="px-3 py-3">
                       <p className="font-semibold">{product.title}</p>
@@ -271,6 +272,17 @@ export const ProductsPage = () => {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="mt-4">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              pageSize={PAGE_SIZE}
+              total={total}
+            />
+          </div>
+        )}
       </section>
 
       <ProductEditModal

@@ -61,6 +61,39 @@ export const listCustomersByType = (type: 'customer' | 'supplier') =>
     .and((customer) => !customer.isArchived)
     .sortBy('name')
 
+export const listCustomersByTypePaginated = async (
+  type: 'customer' | 'supplier',
+  page: number,
+  pageSize: number,
+  searchQuery?: string,
+) => {
+  let query = db.customers.where('type').equals(type).and((customer) => !customer.isArchived)
+
+  if (searchQuery?.trim()) {
+    const searchTerm = searchQuery.toLowerCase()
+    query = query.filter(
+      (customer) =>
+        customer.name.toLowerCase().includes(searchTerm) ||
+        (customer.email?.toLowerCase().includes(searchTerm) ?? false) ||
+        (customer.phone?.toLowerCase().includes(searchTerm) ?? false),
+    )
+  }
+
+  const total = await query.count()
+  const items = await query
+    .offset((page - 1) * pageSize)
+    .limit(pageSize)
+    .sortBy('name')
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  }
+}
+
 export const getCustomer = (id: string) => db.customers.get(id)
 
 export const createCustomer = async (input: CustomerInput & { tenantId?: string }) => {
@@ -135,6 +168,67 @@ export const archiveCustomer = async (id: string) => {
 }
 
 export const listProducts = () => db.products.orderBy('title').filter((product) => !product.isArchived).toArray()
+
+export const listProductsPaginated = async (page: number, pageSize: number, searchQuery?: string) => {
+  let query = db.products.filter((product) => !product.isArchived)
+
+  if (searchQuery?.trim()) {
+    const searchTerm = searchQuery.toLowerCase()
+    query = query.filter(
+      (product) =>
+        product.title.toLowerCase().includes(searchTerm) ||
+        product.sku.toLowerCase().includes(searchTerm) ||
+        (product.barcode?.toLowerCase().includes(searchTerm) ?? false) ||
+        (product.description?.toLowerCase().includes(searchTerm) ?? false),
+    )
+  }
+
+  const total = await query.count()
+  const items = await query
+    .offset((page - 1) * pageSize)
+    .limit(pageSize)
+    .sortBy('title')
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  }
+}
+
+export const searchProducts = async (query: string, limit: number = 20) => {
+  if (!query.trim()) return []
+  const searchTerm = query.toLowerCase()
+  return db.products
+    .filter(
+      (product) =>
+        !product.isArchived &&
+        (product.title.toLowerCase().includes(searchTerm) ||
+          product.sku.toLowerCase().includes(searchTerm) ||
+          (product.barcode?.toLowerCase().includes(searchTerm) ?? false)),
+    )
+    .limit(limit)
+    .toArray()
+}
+
+export const searchCustomers = async (query: string, type: 'customer' | 'supplier', limit: number = 20) => {
+  if (!query.trim()) return []
+  const searchTerm = query.toLowerCase()
+  return db.customers
+    .where('type')
+    .equals(type)
+    .and((customer) => !customer.isArchived)
+    .filter(
+      (customer) =>
+        customer.name.toLowerCase().includes(searchTerm) ||
+        (customer.email?.toLowerCase().includes(searchTerm) ?? false) ||
+        (customer.phone?.toLowerCase().includes(searchTerm) ?? false),
+    )
+    .limit(limit)
+    .toArray()
+}
 
 export const getProduct = (id: string) => db.products.get(id)
 
@@ -211,6 +305,24 @@ export const adjustProductStock = async (id: string, quantity: number) => {
 }
 
 export const listSalesOrders = () => db.salesOrders.orderBy('issuedDate').reverse().toArray()
+
+export const listSalesOrdersPaginated = async (page: number, pageSize: number) => {
+  const total = await db.salesOrders.count()
+  const items = await db.salesOrders
+    .orderBy('issuedDate')
+    .reverse()
+    .offset((page - 1) * pageSize)
+    .limit(pageSize)
+    .toArray()
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  }
+}
 
 export const getSalesOrderWithItems = async (id: string) => {
   const order = await db.salesOrders.get(id)
@@ -300,6 +412,24 @@ export const updateSalesOrderStatus = async (id: string, status: SalesOrder['sta
 }
 
 export const listPurchaseOrders = () => db.purchaseOrders.orderBy('issuedDate').reverse().toArray()
+
+export const listPurchaseOrdersPaginated = async (page: number, pageSize: number) => {
+  const total = await db.purchaseOrders.count()
+  const items = await db.purchaseOrders
+    .orderBy('issuedDate')
+    .reverse()
+    .offset((page - 1) * pageSize)
+    .limit(pageSize)
+    .toArray()
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  }
+}
 
 export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId?: string }) => {
   const id = nanoid()
