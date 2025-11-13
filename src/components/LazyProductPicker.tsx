@@ -54,7 +54,11 @@ export const LazyProductPicker = ({
         <div className="relative flex-1">
           <input
             type="text"
-            value={selectedProduct ? `${selectedProduct.title} - ${selectedProduct.price.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}` : searchQuery}
+            value={
+              selectedProduct
+                ? `${selectedProduct.title} - ${(selectedProduct.salePrice ?? selectedProduct.price ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}`
+                : searchQuery
+            }
             onChange={(event) => {
               setSearchQuery(event.target.value)
               setIsOpen(true)
@@ -79,7 +83,12 @@ export const LazyProductPicker = ({
                     >
                       <div className="font-medium">{product.title}</div>
                       <div className="text-xs text-slate-500">
-                        {product.sku} · {product.price.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        {product.sku} · MRP:{' '}
+                        {(product.mrp ?? product.price ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        {' · '}Sale:{' '}
+                        <span className="font-semibold">
+                          {(product.salePrice ?? product.price ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        </span>
                       </div>
                     </button>
                   ))}

@@ -16,6 +16,7 @@ export interface Customer extends BaseEntity {
   email?: string
   phone?: string
   address?: string
+  state?: string // State for GST calculation
   notes?: string
   balance: number
   isArchived: boolean
@@ -26,8 +27,13 @@ export interface Product extends BaseEntity {
   barcode?: string
   title: string
   description?: string
-  price: number
+  mrp: number // Maximum Retail Price
+  salePrice: number // Selling price (after default discount)
+  price: number // Alias for salePrice (for backward compatibility)
   cost: number
+  defaultDiscount: number // Default discount amount or percentage
+  defaultDiscountType: 'amount' | 'percentage' // Discount type
+  unitId?: string // Unit ID (e.g., 'piece', 'dozen')
   stockOnHand: number
   reorderLevel?: number
   isArchived: boolean
@@ -41,6 +47,8 @@ export interface SalesOrder extends BaseEntity {
   issuedDate: string
   dueDate?: string
   subtotal: number
+  discount: number // Order-level discount
+  discountType: 'amount' | 'percentage' // Discount type
   tax: number
   total: number
   notes?: string

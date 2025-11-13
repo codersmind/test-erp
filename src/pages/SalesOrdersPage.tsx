@@ -10,8 +10,8 @@ import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
 import { LazyProductPicker } from '../components/LazyProductPicker'
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
-import { getTaxRate, calculateTax } from '../utils/taxSettings'
-import { getProduct } from '../db/localDataService'
+import { getTaxSettings, calculateTax, COMMON_GST_RATES, INDIAN_STATES, type TaxSettings } from '../utils/taxSettings'
+import { getProduct, getCustomer } from '../db/localDataService'
 import type { Customer, Product } from '../db/schema'
 
 interface LineItem {
@@ -26,22 +26,54 @@ const PAGE_SIZE = 20
 export const SalesOrdersPage = () => {
   const [page, setPage] = useState(1)
   const { data: paginatedData, isPending } = useSalesOrdersPaginated(page, PAGE_SIZE)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<TaxSettings & { customerId: string; selectedState?: string; orderDiscount: number; orderDiscountType: 'amount' | 'percentage'; lineItems: LineItem[] }>({
     customerId: '',
     lineItems: [{ productId: '', quantity: 1, unitPrice: 0, discount: 0 }],
-    taxRate: 0,
+    type: 'gst',
+    gstRate: 5,
+    cgstRate: 2.5,
+    sgstRate: 2.5,
+    defaultState: undefined,
+    stateRates: {},
+    selectedState: undefined,
+    orderDiscount: 0,
+    orderDiscountType: 'amount',
   })
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const createSalesOrderMutation = useCreateSalesOrder()
 
-  // Load tax rate on mount
+  // Load tax settings and customer state on mount
   useEffect(() => {
-    getTaxRate().then((rate) => {
-      setForm((prev) => ({ ...prev, taxRate: rate }))
+    getTaxSettings().then((settings) => {
+      setForm((prev) => ({ ...prev, ...settings, selectedState: settings.defaultState }))
     })
   }, [])
+
+  // Load customer state when customer is selected
+  useEffect(() => {
+    if (form.customerId) {
+      getCustomer(form.customerId).then((customer) => {
+        if (customer?.state) {
+          setForm((prev) => ({ ...prev, selectedState: customer.state }))
+          // Load state-specific tax rates if available
+          getTaxSettings().then((settings) => {
+            if (settings.stateRates[customer.state!]) {
+              const stateConfig = settings.stateRates[customer.state!]
+              setForm((prev) => ({
+                ...prev,
+                type: stateConfig.type,
+                gstRate: stateConfig.gstRate,
+                cgstRate: stateConfig.cgstRate,
+                sgstRate: stateConfig.sgstRate,
+              }))
+            }
+          })
+        }
+      })
+    }
+  }, [form.customerId])
 
   const orders = paginatedData?.items ?? []
   const total = paginatedData?.total ?? 0
@@ -61,7 +93,9 @@ export const SalesOrdersPage = () => {
     }
     const product = await getProduct(productId)
     if (product) {
-      updateLineItem(index, { productId, unitPrice: product.price })
+      // Use salePrice if available, otherwise fallback to price
+      const unitPrice = product.salePrice ?? product.price ?? 0
+      updateLineItem(index, { productId, unitPrice })
     }
   }
 
@@ -105,10 +139,26 @@ export const SalesOrdersPage = () => {
         discount: item.discount,
         lineTotal: item.quantity * item.unitPrice - item.discount,
       })),
-      taxRate: form.taxRate,
+      taxSettings: {
+        type: form.type,
+        gstRate: form.gstRate,
+        cgstRate: form.cgstRate,
+        sgstRate: form.sgstRate,
+        defaultState: form.defaultState,
+        stateRates: form.stateRates,
+      },
+      discount: form.orderDiscount,
+      discountType: form.orderDiscountType,
       notes: 'Captured offline',
     })
-    setForm({ customerId: '', lineItems: [{ productId: '', quantity: 1, unitPrice: 0, discount: 0 }], taxRate: form.taxRate })
+    const defaultTax = await getTaxSettings()
+    setForm({
+      customerId: '',
+      lineItems: [{ productId: '', quantity: 1, unitPrice: 0, discount: 0 }],
+      orderDiscount: 0,
+      orderDiscountType: 'amount',
+      ...defaultTax,
+    })
   }
 
   const handleCustomerCreated = (customer: Customer) => {
@@ -117,7 +167,8 @@ export const SalesOrdersPage = () => {
 
   const handleProductCreated = (product: Product) => {
     if (selectedProductIndex !== null) {
-      updateLineItem(selectedProductIndex, { productId: product.id, unitPrice: product.price })
+      const unitPrice = product.salePrice ?? product.price ?? 0
+      updateLineItem(selectedProductIndex, { productId: product.id, unitPrice })
       setSelectedProductIndex(null)
     }
   }
@@ -133,8 +184,20 @@ export const SalesOrdersPage = () => {
     [form.lineItems],
   )
 
-  const tax = useMemo(() => calculateTax(subtotal, form.taxRate), [subtotal, form.taxRate])
-  const totalAmount = subtotal + tax
+  const orderDiscountAmount = useMemo(() => {
+    if (form.orderDiscount <= 0) return 0
+    if (form.orderDiscountType === 'percentage') {
+      return subtotal * (form.orderDiscount / 100)
+    }
+    return form.orderDiscount
+  }, [subtotal, form.orderDiscount, form.orderDiscountType])
+
+  const subtotalAfterDiscount = Math.max(0, subtotal - orderDiscountAmount)
+
+  const taxCalculation = useMemo(() => {
+    return calculateTax(subtotalAfterDiscount, form, form.selectedState)
+  }, [subtotalAfterDiscount, form, form.selectedState])
+  const totalAmount = subtotalAfterDiscount + taxCalculation.tax
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
@@ -255,23 +318,203 @@ export const SalesOrdersPage = () => {
               <span className="text-slate-600 dark:text-slate-400">Subtotal</span>
               <span className="font-medium">{subtotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
             </div>
+
+            {/* Order-level Discount */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-600 dark:text-slate-400">Tax Rate (%)</label>
+                <label className="text-sm text-slate-600 dark:text-slate-400">Order Discount</label>
                 <input
                   type="number"
                   min="0"
-                  max="100"
                   step="0.01"
-                  value={form.taxRate}
+                  value={form.orderDiscount || ''}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, taxRate: Number.parseFloat(event.target.value) || 0 }))
+                    setForm((prev) => ({ ...prev, orderDiscount: Number.parseFloat(event.target.value) || 0 }))
                   }
-                  className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  placeholder="0.00"
                 />
+                <select
+                  value={form.orderDiscountType}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, orderDiscountType: event.target.value as 'amount' | 'percentage' }))
+                  }
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                >
+                  <option value="amount">Amount</option>
+                  <option value="percentage">%</option>
+                </select>
               </div>
-              <span className="text-sm font-medium">{tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
+              <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+              </span>
             </div>
+            {orderDiscountAmount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600 dark:text-slate-400">Subtotal after discount</span>
+                <span className="font-medium">{subtotalAfterDiscount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
+              </div>
+            )}
+
+            {/* State Selection */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-slate-600 dark:text-slate-300">State</label>
+              <select
+                value={form.selectedState || ''}
+                onChange={(e) => {
+                  const selectedState = e.target.value || undefined
+                  setForm((prev) => {
+                    const newForm = { ...prev, selectedState }
+                    // Load state-specific tax rates if available
+                    if (selectedState && prev.stateRates?.[selectedState]) {
+                      const stateConfig = prev.stateRates[selectedState]
+                      return {
+                        ...newForm,
+                        type: stateConfig.type,
+                        gstRate: stateConfig.gstRate,
+                        cgstRate: stateConfig.cgstRate,
+                        sgstRate: stateConfig.sgstRate,
+                      }
+                    }
+                    return newForm
+                  })
+                }}
+                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              >
+                <option value="">Default (No state-specific rate)</option>
+                {INDIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+              {form.selectedState && form.stateRates?.[form.selectedState] && (
+                <span className="text-xs text-blue-600 dark:text-blue-400">State rate applied</span>
+              )}
+            </div>
+
+            {/* Tax Type Selection */}
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Tax Type</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const totalRate = form.type === 'cgst_sgst' ? form.cgstRate + form.sgstRate : form.gstRate
+                    setForm((prev) => ({ ...prev, type: 'gst', gstRate: totalRate }))
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    form.type === 'gst'
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  GST
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const totalRate = form.type === 'gst' ? form.gstRate : form.cgstRate + form.sgstRate
+                    const halfRate = totalRate / 2
+                    setForm((prev) => ({
+                      ...prev,
+                      type: 'cgst_sgst',
+                      cgstRate: halfRate,
+                      sgstRate: halfRate,
+                    }))
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    form.type === 'cgst_sgst'
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  CGST + SGST
+                </button>
+              </div>
+            </div>
+
+            {/* Tax Rate Inputs */}
+            {form.type === 'gst' ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-slate-600 dark:text-slate-400">GST Rate (%)</label>
+                  <select
+                    value={form.gstRate}
+                    onChange={(e) => setForm((prev) => ({ ...prev, gstRate: Number.parseFloat(e.target.value) }))}
+                    className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    {COMMON_GST_RATES.map((rate) => (
+                      <option key={rate} value={rate}>
+                        {rate}%
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={form.gstRate}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, gstRate: Number.parseFloat(event.target.value) || 0 }))
+                    }
+                    className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    placeholder="Custom"
+                  />
+                </div>
+                <span className="text-sm font-medium">
+                  GST: {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-slate-600 dark:text-slate-400">CGST Rate (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      step="0.01"
+                      value={form.cgstRate}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, cgstRate: Number.parseFloat(event.target.value) || 0 }))
+                      }
+                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <span className="text-sm font-medium">
+                    CGST: {taxCalculation.cgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-slate-600 dark:text-slate-400">SGST Rate (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      step="0.01"
+                      value={form.sgstRate}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, sgstRate: Number.parseFloat(event.target.value) || 0 }))
+                      }
+                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <span className="text-sm font-medium">
+                    SGST: {taxCalculation.sgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-end text-sm">
+                  <span className="font-medium">
+                    Total Tax: {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-800">
               <span className="text-lg font-semibold text-slate-900 dark:text-slate-50">Total</span>
               <span className="text-xl font-bold text-slate-900 dark:text-slate-50">

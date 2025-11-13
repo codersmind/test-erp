@@ -1,4 +1,4 @@
-import { useSync } from '../sync/SyncProvider'
+import { useSync } from '../sync/useSync'
 import { formatDistanceToNowStrict } from '../utils/time'
 
 export const SyncStatus = () => {

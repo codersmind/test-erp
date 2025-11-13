@@ -1,7 +1,8 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 
 import { useCreateProduct } from '../hooks/useProducts'
 import type { Product } from '../db/schema'
+import { getUnitSettings } from '../utils/unitSettings'
 
 interface ProductQuickCreateModalProps {
   isOpen: boolean
@@ -19,9 +20,18 @@ export const ProductQuickCreateModal = ({
     title: '',
     sku: '',
     barcode: '',
-    price: '',
+    mrp: '',
     cost: '',
   })
+  const [defaultUnitId, setDefaultUnitId] = useState<string>('piece')
+
+  useEffect(() => {
+    const loadDefaultUnit = async () => {
+      const settings = await getUnitSettings()
+      setDefaultUnitId(settings.defaultUnitId)
+    }
+    loadDefaultUnit()
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -32,13 +42,14 @@ export const ProductQuickCreateModal = ({
         title: form.title.trim(),
         sku: form.sku.trim() || `SKU-${Date.now()}`,
         barcode: form.barcode.trim() || undefined,
-        price: Number.parseFloat(form.price) || 0,
+        mrp: Number.parseFloat(form.mrp) || 0,
         cost: Number.parseFloat(form.cost) || 0,
+        unitId: defaultUnitId || undefined,
         description: undefined,
         reorderLevel: undefined,
       })
       onProductCreated(product)
-      setForm({ title: '', sku: '', barcode: '', price: '', cost: '' })
+      setForm({ title: '', sku: '', barcode: '', mrp: '', cost: '' })
       onClose()
     } catch (error) {
       console.error('Failed to create product', error)
@@ -97,15 +108,15 @@ export const ProductQuickCreateModal = ({
             <div className="grid grid-cols-2 gap-4">
               <label>
                 <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Price <span className="text-red-500">*</span>
+                  MRP <span className="text-red-500">*</span>
                 </span>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   required
-                  value={form.price}
-                  onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+                  value={form.mrp}
+                  onChange={(event) => setForm((prev) => ({ ...prev, mrp: event.target.value }))}
                   className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   placeholder="0.00"
                 />

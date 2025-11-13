@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react'
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useAuth } from '../auth/AuthProvider'
@@ -17,7 +17,7 @@ interface SyncContextValue {
   triggerSync: () => Promise<void>
 }
 
-const SyncContext = createContext<SyncContextValue | undefined>(undefined)
+export const SyncContext = createContext<SyncContextValue | undefined>(undefined)
 
 const LAST_SYNC_KEY = 'erp:lastSyncedAt'
 
@@ -85,13 +85,5 @@ export const SyncProvider = ({ children }: PropsWithChildren) => {
   )
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>
-}
-
-export const useSync = () => {
-  const ctx = useContext(SyncContext)
-  if (!ctx) {
-    throw new Error('useSync must be used within SyncProvider')
-  }
-  return ctx
 }
 

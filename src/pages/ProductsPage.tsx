@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 
 import { useAdjustProductStock, useCreateProduct } from '../hooks/useProducts'
 import { useProductsPaginated } from '../hooks/useProductsPaginated'
@@ -6,6 +6,7 @@ import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { ProductEditModal } from '../components/ProductEditModal'
 import { Pagination } from '../components/Pagination'
 import type { Product } from '../db/schema'
+import { getAllUnits, getUnitSettings, type Unit } from '../utils/unitSettings'
 
 const PAGE_SIZE = 20
 
@@ -19,13 +20,29 @@ export const ProductsPage = () => {
     title: '',
     sku: '',
     barcode: '',
-    price: '',
+    mrp: '',
+    salePrice: '',
     cost: '',
+    defaultDiscount: '',
+    defaultDiscountType: 'amount' as 'amount' | 'percentage',
     description: '',
     reorderLevel: '',
+    unitId: '',
   })
+  const [units, setUnits] = useState<Unit[]>([])
+  const [defaultUnitId, setDefaultUnitId] = useState<string>('piece')
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
+
+  useEffect(() => {
+    const loadUnits = async () => {
+      const allUnits = await getAllUnits()
+      setUnits(allUnits)
+      const settings = await getUnitSettings()
+      setDefaultUnitId(settings.defaultUnitId)
+    }
+    loadUnits()
+  }, [])
 
   useBarcodeScanner((code) => {
     setForm((prev) => ({ ...prev, barcode: code }))
@@ -39,8 +56,12 @@ export const ProductsPage = () => {
       title: form.title.trim(),
       sku: form.sku.trim() || `SKU-${Date.now()}`,
       barcode: form.barcode.trim() || undefined,
-      price: Number.parseFloat(form.price) || 0,
+      mrp: Number.parseFloat(form.mrp) || 0,
+      salePrice: form.salePrice ? Number.parseFloat(form.salePrice) : undefined,
       cost: Number.parseFloat(form.cost) || 0,
+      defaultDiscount: form.defaultDiscount ? Number.parseFloat(form.defaultDiscount) : 0,
+      defaultDiscountType: form.defaultDiscountType,
+      unitId: form.unitId || defaultUnitId || undefined,
       description: form.description.trim() || undefined,
       reorderLevel: form.reorderLevel ? Number.parseInt(form.reorderLevel) : undefined,
     })
@@ -49,10 +70,14 @@ export const ProductsPage = () => {
       title: '',
       sku: '',
       barcode: '',
-      price: '',
+      mrp: '',
+      salePrice: '',
       cost: '',
+      defaultDiscount: '',
+      defaultDiscountType: 'amount',
       description: '',
       reorderLevel: '',
+      unitId: '',
     })
   }
 
@@ -113,16 +138,51 @@ export const ProductsPage = () => {
               />
             </label>
             <label>
-              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Price</span>
+              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">MRP (Maximum Retail Price)</span>
               <input
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.price}
-                onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+                value={form.mrp}
+                onChange={(event) => setForm((prev) => ({ ...prev, mrp: event.target.value }))}
                 className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                 placeholder="0.00"
               />
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Sale Price</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.salePrice}
+                onChange={(event) => setForm((prev) => ({ ...prev, salePrice: event.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                placeholder="Auto-calculated from discount"
+              />
+              <p className="mt-1 text-xs text-slate-500">Leave empty to auto-calculate from MRP and discount</p>
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Default Discount</span>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.defaultDiscount}
+                  onChange={(event) => setForm((prev) => ({ ...prev, defaultDiscount: event.target.value }))}
+                  className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  placeholder="0.00"
+                />
+                <select
+                  value={form.defaultDiscountType}
+                  onChange={(event) => setForm((prev) => ({ ...prev, defaultDiscountType: event.target.value as 'amount' | 'percentage' }))}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                >
+                  <option value="amount">Amount</option>
+                  <option value="percentage">%</option>
+                </select>
+              </div>
             </label>
             <label>
               <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Cost</span>
@@ -135,6 +195,20 @@ export const ProductsPage = () => {
                 className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                 placeholder="0.00"
               />
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Unit</span>
+              <select
+                value={form.unitId || defaultUnitId}
+                onChange={(event) => setForm((prev) => ({ ...prev, unitId: event.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              >
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name} ({unit.symbol})
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Reorder Level</span>
@@ -193,7 +267,8 @@ export const ProductsPage = () => {
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Title</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">SKU</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Barcode</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Price</th>
+                <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">MRP</th>
+                <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Sale Price</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Cost</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Stock</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Actions</th>
@@ -202,25 +277,41 @@ export const ProductsPage = () => {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {isPending ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                     Loading inventory…
                   </td>
                 </tr>
               ) : products.length ? (
-                products.map((product) => (
-                  <tr key={product.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <td className="px-3 py-3">
-                      <p className="font-semibold">{product.title}</p>
-                      <p className="text-xs text-slate-500">{product.description ?? '—'}</p>
-                    </td>
-                    <td className="px-3 py-3 text-slate-500">{product.sku}</td>
-                    <td className="px-3 py-3 text-slate-500">{product.barcode ?? '—'}</td>
-                    <td className="px-3 py-3 text-right">
-                      {product.price.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {product.cost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-                    </td>
+                products.map((product) => {
+                  const mrp = product.mrp ?? product.price ?? 0
+                  const salePrice = product.salePrice ?? product.price ?? 0
+                  const discount = mrp > 0 ? ((mrp - salePrice) / mrp) * 100 : 0
+                  return (
+                    <tr key={product.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="px-3 py-3">
+                        <p className="font-semibold">{product.title}</p>
+                        <p className="text-xs text-slate-500">{product.description ?? '—'}</p>
+                      </td>
+                      <td className="px-3 py-3 text-slate-500">{product.sku}</td>
+                      <td className="px-3 py-3 text-slate-500">{product.barcode ?? '—'}</td>
+                      <td className="px-3 py-3 text-right">
+                        <span className={mrp > salePrice ? 'line-through text-slate-400' : ''}>
+                          {mrp.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="font-semibold">
+                          {salePrice.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        </span>
+                        {discount > 0 && (
+                          <span className="ml-1 text-xs text-green-600 dark:text-green-400">
+                            ({discount.toFixed(0)}% off)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {product.cost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                      </td>
                     <td className="px-3 py-3 text-right">
                       <span
                         className={
@@ -261,7 +352,8 @@ export const ProductsPage = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                  )
+                })
               ) : (
                 <tr>
                   <td colSpan={7} className="px-3 py-6 text-center text-slate-500">

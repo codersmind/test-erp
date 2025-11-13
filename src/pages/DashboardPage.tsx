@@ -4,7 +4,7 @@ import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { usePurchaseOrders } from '../hooks/usePurchaseOrders'
 import { useSalesOrders } from '../hooks/useSalesOrders'
-import { useSync } from '../sync/SyncProvider'
+import { useSync } from '../sync/useSync'
 
 export const DashboardPage = () => {
   const { data: customers } = useCustomers()

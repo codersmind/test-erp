@@ -14,18 +14,32 @@ import type {
 } from './schema'
 import { DEFAULT_TENANT_ID, nowIso } from './utils'
 
-type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'notes'>
+type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'state' | 'notes'>
 
 type ProductInput = Pick<
   Product,
-  'sku' | 'barcode' | 'title' | 'description' | 'price' | 'cost' | 'reorderLevel'
->
+  | 'sku'
+  | 'barcode'
+  | 'title'
+  | 'description'
+  | 'mrp'
+  | 'cost'
+  | 'defaultDiscount'
+  | 'defaultDiscountType'
+  | 'unitId'
+  | 'reorderLevel'
+> & {
+  salePrice?: number // Optional - will be auto-calculated if not provided
+  price?: number // Optional - alias for salePrice (backward compatibility)
+}
 
 type SalesOrderInput = {
   customerId: string
   status?: SalesOrder['status']
   issuedDate?: string
   dueDate?: string
+  discount?: number
+  discountType?: 'amount' | 'percentage'
   notes?: string
   items: Array<Omit<SalesOrderItem, 'id' | 'orderId' | 'lineTotal'> & { lineTotal?: number }>
 }
@@ -112,6 +126,7 @@ export const createCustomer = async (input: CustomerInput & { tenantId?: string 
     email: input.email,
     phone: input.phone,
     address: input.address,
+    state: input.state,
     notes: input.notes,
   }
 
@@ -235,6 +250,25 @@ export const getProduct = (id: string) => db.products.get(id)
 export const createProduct = async (input: ProductInput & { tenantId?: string }) => {
   const timestamp = nowIso()
   const id = nanoid()
+  
+  // Calculate salePrice from MRP and default discount if not provided
+  let salePrice = input.salePrice ?? input.price ?? 0
+  const mrp = input.mrp ?? input.price ?? 0
+  
+  // If MRP is set but salePrice is not, calculate from default discount
+  if (mrp > 0 && !input.salePrice && input.defaultDiscount) {
+    if (input.defaultDiscountType === 'percentage') {
+      salePrice = mrp * (1 - input.defaultDiscount / 100)
+    } else {
+      salePrice = mrp - input.defaultDiscount
+    }
+  } else if (mrp > 0 && !input.salePrice) {
+    salePrice = mrp // If no discount, salePrice = MRP
+  }
+  
+  // Ensure price is set (for backward compatibility)
+  const price = salePrice
+  
   const product: Product = {
     id,
     tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
@@ -244,9 +278,14 @@ export const createProduct = async (input: ProductInput & { tenantId?: string })
     sku: input.sku,
     barcode: input.barcode,
     title: input.title,
+    mrp: mrp,
+    salePrice: salePrice,
+    price: price,
     description: input.description,
-    price: input.price,
-    cost: input.cost,
+    cost: input.cost ?? 0,
+    defaultDiscount: input.defaultDiscount ?? 0,
+    defaultDiscountType: input.defaultDiscountType ?? 'amount',
+    unitId: input.unitId,
     stockOnHand: 0,
     reorderLevel: input.reorderLevel,
     isArchived: false,
@@ -266,10 +305,35 @@ export const updateProduct = async (id: string, input: Partial<ProductInput>) =>
     throw new Error(`Product ${id} not found`)
   }
 
+  // Calculate salePrice from MRP and default discount if needed
+  let salePrice = input.salePrice ?? existing.salePrice ?? existing.price ?? 0
+  const mrp = input.mrp ?? existing.mrp ?? existing.price ?? 0
+  
+  // If MRP is set but salePrice is not provided, calculate from default discount
+  if (mrp > 0 && !input.salePrice && (input.defaultDiscount !== undefined || input.mrp !== undefined)) {
+    const defaultDiscount = input.defaultDiscount ?? existing.defaultDiscount ?? 0
+    const defaultDiscountType = input.defaultDiscountType ?? existing.defaultDiscountType ?? 'amount'
+    if (defaultDiscount > 0) {
+      if (defaultDiscountType === 'percentage') {
+        salePrice = mrp * (1 - defaultDiscount / 100)
+      } else {
+        salePrice = mrp - defaultDiscount
+      }
+    } else {
+      salePrice = mrp // If no discount, salePrice = MRP
+    }
+  }
+  
+  // Ensure price is set (for backward compatibility)
+  const price = salePrice
+
   const timestamp = nowIso()
   const updated: Product = {
     ...existing,
     ...input,
+    mrp: mrp,
+    salePrice: salePrice,
+    price: price,
     updatedAt: timestamp,
     version: existing.version + 1,
   }
@@ -332,7 +396,7 @@ export const getSalesOrderWithItems = async (id: string) => {
 }
 
 export const createSalesOrder = async (
-  input: SalesOrderInput & { tenantId?: string; taxRate?: number },
+  input: SalesOrderInput & { tenantId?: string; taxRate?: number; taxSettings?: import('../utils/taxSettings').TaxSettings },
 ) => {
   const id = nanoid()
   const timestamp = nowIso()
@@ -360,9 +424,29 @@ export const createSalesOrder = async (
     { subtotal: 0 },
   )
 
-  const taxRate = input.taxRate ?? 0
-  const tax = totals.subtotal * (taxRate / 100)
-  const total = totals.subtotal + tax
+  // Calculate order-level discount
+  let orderDiscount = 0
+  const discountType = input.discountType ?? 'amount'
+  if (input.discount && input.discount > 0) {
+    if (discountType === 'percentage') {
+      orderDiscount = totals.subtotal * (input.discount / 100)
+    } else {
+      orderDiscount = input.discount
+    }
+  }
+  const subtotalAfterDiscount = Math.max(0, totals.subtotal - orderDiscount)
+
+  // Calculate tax using new taxSettings or fallback to legacy taxRate
+  let tax = 0
+  if (input.taxSettings) {
+    const { calculateTax } = await import('../utils/taxSettings')
+    const taxCalc = calculateTax(subtotalAfterDiscount, input.taxSettings)
+    tax = taxCalc.tax
+  } else {
+    const taxRate = input.taxRate ?? 0
+    tax = subtotalAfterDiscount * (taxRate / 100)
+  }
+  const total = subtotalAfterDiscount + tax
 
   const salesOrder: SalesOrder = {
     id,
@@ -375,6 +459,8 @@ export const createSalesOrder = async (
     issuedDate,
     dueDate: input.dueDate,
     subtotal: totals.subtotal,
+    discount: orderDiscount,
+    discountType: discountType,
     tax,
     total,
     notes: input.notes,

@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 
 import { useUpdateProduct } from '../hooks/useProducts'
 import type { Product } from '../db/schema'
+import { getAllUnits, getUnitSettings, type Unit } from '../utils/unitSettings'
 
 interface ProductEditModalProps {
   isOpen: boolean
@@ -16,10 +17,26 @@ export const ProductEditModal = ({ isOpen, onClose, product }: ProductEditModalP
     sku: '',
     barcode: '',
     description: '',
-    price: '',
+    mrp: '',
+    salePrice: '',
     cost: '',
+    defaultDiscount: '',
+    defaultDiscountType: 'amount' as 'amount' | 'percentage',
+    unitId: '',
     reorderLevel: '',
   })
+  const [units, setUnits] = useState<Unit[]>([])
+  const [defaultUnitId, setDefaultUnitId] = useState<string>('piece')
+
+  useEffect(() => {
+    const loadUnits = async () => {
+      const allUnits = await getAllUnits()
+      setUnits(allUnits)
+      const settings = await getUnitSettings()
+      setDefaultUnitId(settings.defaultUnitId)
+    }
+    loadUnits()
+  }, [])
 
   useEffect(() => {
     if (product) {
@@ -28,8 +45,12 @@ export const ProductEditModal = ({ isOpen, onClose, product }: ProductEditModalP
         sku: product.sku,
         barcode: product.barcode || '',
         description: product.description || '',
-        price: product.price.toString(),
+        mrp: (product.mrp ?? product.price ?? 0).toString(),
+        salePrice: (product.salePrice ?? product.price ?? 0).toString(),
         cost: product.cost.toString(),
+        defaultDiscount: (product.defaultDiscount ?? 0).toString(),
+        defaultDiscountType: product.defaultDiscountType ?? 'amount',
+        unitId: product.unitId || '',
         reorderLevel: product.reorderLevel?.toString() || '',
       })
     }
@@ -46,8 +67,12 @@ export const ProductEditModal = ({ isOpen, onClose, product }: ProductEditModalP
         sku: form.sku.trim(),
         barcode: form.barcode.trim() || undefined,
         description: form.description.trim() || undefined,
-        price: Number.parseFloat(form.price) || 0,
+        mrp: Number.parseFloat(form.mrp) || 0,
+        salePrice: Number.parseFloat(form.salePrice) || undefined,
         cost: Number.parseFloat(form.cost) || 0,
+        defaultDiscount: Number.parseFloat(form.defaultDiscount) || 0,
+        defaultDiscountType: form.defaultDiscountType,
+        unitId: form.unitId || defaultUnitId || undefined,
         reorderLevel: form.reorderLevel ? Number.parseInt(form.reorderLevel) : undefined,
       })
       onClose()
@@ -114,18 +139,53 @@ export const ProductEditModal = ({ isOpen, onClose, product }: ProductEditModalP
               </label>
               <label>
                 <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Price <span className="text-red-500">*</span>
+                  MRP (Maximum Retail Price) <span className="text-red-500">*</span>
                 </span>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   required
-                  value={form.price}
-                  onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+                  value={form.mrp}
+                  onChange={(event) => setForm((prev) => ({ ...prev, mrp: event.target.value }))}
                   className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   placeholder="0.00"
                 />
+              </label>
+              <label>
+                <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Sale Price</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.salePrice}
+                  onChange={(event) => setForm((prev) => ({ ...prev, salePrice: event.target.value }))}
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  placeholder="Auto-calculated"
+                />
+                <p className="mt-1 text-xs text-slate-500">Leave empty to auto-calculate from MRP and discount</p>
+              </label>
+              <label>
+                <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Default Discount</span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.defaultDiscount}
+                    onChange={(event) => setForm((prev) => ({ ...prev, defaultDiscount: event.target.value }))}
+                    className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    placeholder="0.00"
+                  />
+                  <select
+                    value={form.defaultDiscountType}
+                    onChange={(event) => setForm((prev) => ({ ...prev, defaultDiscountType: event.target.value as 'amount' | 'percentage' }))}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    <option value="amount">Amount</option>
+                    <option value="percentage">%</option>
+                  </select>
+                </div>
               </label>
               <label>
                 <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Cost</span>
@@ -138,6 +198,20 @@ export const ProductEditModal = ({ isOpen, onClose, product }: ProductEditModalP
                   className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   placeholder="0.00"
                 />
+              </label>
+              <label>
+                <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Unit</span>
+                <select
+                  value={form.unitId || defaultUnitId}
+                  onChange={(event) => setForm((prev) => ({ ...prev, unitId: event.target.value }))}
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                >
+                  {units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name} ({unit.symbol})
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">Reorder Level</span>

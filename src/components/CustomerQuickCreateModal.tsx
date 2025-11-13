@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react'
 
 import { useCreateCustomer } from '../hooks/useCustomers'
+import { INDIAN_STATES } from '../utils/taxSettings'
 import type { Customer, CustomerType } from '../db/schema'
 
 interface CustomerQuickCreateModalProps {
@@ -22,6 +23,7 @@ export const CustomerQuickCreateModal = ({
     email: '',
     phone: '',
     address: '',
+    state: '',
   })
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -35,9 +37,10 @@ export const CustomerQuickCreateModal = ({
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         address: form.address.trim() || undefined,
+        state: form.state || undefined,
       })
       onCustomerCreated(customer)
-      setForm({ name: '', email: '', phone: '', address: '' })
+      setForm({ name: '', email: '', phone: '', address: '', state: '' })
       onClose()
     } catch (error) {
       console.error('Failed to create customer', error)
@@ -102,6 +105,21 @@ export const CustomerQuickCreateModal = ({
                 className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                 placeholder="123 Main St, City, State ZIP"
               />
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">State</span>
+              <select
+                value={form.state}
+                onChange={(event) => setForm((prev) => ({ ...prev, state: event.target.value }))}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              >
+                <option value="">Select state (optional)</option>
+                {INDIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div className="mt-6 flex justify-end gap-3">

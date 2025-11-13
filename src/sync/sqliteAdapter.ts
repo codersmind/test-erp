@@ -58,7 +58,9 @@ const mapCustomerRow = (row: Record<string, unknown>): Customer => ({
   email: toOptionalString(row.email),
   phone: toOptionalString(row.phone),
   address: toOptionalString(row.address),
+  state: toOptionalString(row.state),
   notes: toOptionalString(row.notes),
+  type: toStringValue(row.type) as Customer['type'],
 })
 
 const mapProductRow = (row: Record<string, unknown>): Product => ({
@@ -71,8 +73,13 @@ const mapProductRow = (row: Record<string, unknown>): Product => ({
   barcode: toOptionalString(row.barcode),
   title: toStringValue(row.title),
   description: toOptionalString(row.description),
-  price: toNumberValue(row.price),
+  mrp: toNumberValue(row.mrp ?? row.price ?? 0),
+  salePrice: toNumberValue(row.salePrice ?? row.price ?? 0),
+  price: toNumberValue(row.price ?? row.salePrice ?? 0),
   cost: toNumberValue(row.cost),
+  defaultDiscount: toNumberValue(row.defaultDiscount ?? 0),
+  defaultDiscountType: (toStringValue(row.defaultDiscountType ?? 'amount')) as 'amount' | 'percentage',
+  unitId: toOptionalString(row.unitId),
   stockOnHand: toNumberValue(row.stockOnHand),
   reorderLevel: row.reorderLevel != null ? toNumberValue(row.reorderLevel) : undefined,
   isArchived: toBoolean(toNumberValue(row.isArchived)),
@@ -86,6 +93,8 @@ const mapSalesOrderRow = (row: Record<string, unknown>): SalesOrder => ({
   version: toNumberValue(row.version),
   customerId: toStringValue(row.customerId),
   status: toStringValue(row.status) as SalesOrder['status'],
+  discount: toNumberValue(row.discount ?? 0),
+  discountType: (toStringValue(row.discountType ?? 'amount')) as 'amount' | 'percentage',
   issuedDate: toStringValue(row.issuedDate, nowIso()),
   dueDate: toOptionalString(row.dueDate),
   subtotal: toNumberValue(row.subtotal),
@@ -142,7 +151,9 @@ const tableCreators = [
       email TEXT,
       phone TEXT,
       address TEXT,
-      notes TEXT
+      state TEXT,
+      notes TEXT,
+      type TEXT
     );`,
   `CREATE TABLE products (
       id TEXT PRIMARY KEY,
@@ -154,8 +165,13 @@ const tableCreators = [
       barcode TEXT,
       title TEXT,
       description TEXT,
+      mrp REAL,
+      salePrice REAL,
       price REAL,
       cost REAL,
+      defaultDiscount REAL,
+      defaultDiscountType TEXT,
+      unitId TEXT,
       stockOnHand REAL,
       reorderLevel REAL,
       isArchived INTEGER
@@ -171,6 +187,8 @@ const tableCreators = [
       issuedDate TEXT,
       dueDate TEXT,
       subtotal REAL,
+      discount REAL,
+      discountType TEXT,
       tax REAL,
       total REAL,
       notes TEXT
@@ -214,7 +232,7 @@ const tableCreators = [
 
 const insertCustomers = (db: Database, customers: Customer[]) => {
   const stmt = db.prepare(
-    `INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -225,7 +243,9 @@ const insertCustomers = (db: Database, customers: Customer[]) => {
       email=excluded.email,
       phone=excluded.phone,
       address=excluded.address,
-      notes=excluded.notes`,
+      state=excluded.state,
+      notes=excluded.notes,
+      type=excluded.type`,
   )
   customers.forEach((customer) => {
     stmt.run([
@@ -240,7 +260,9 @@ const insertCustomers = (db: Database, customers: Customer[]) => {
       customer.email ?? null,
       customer.phone ?? null,
       customer.address ?? null,
+      customer.state ?? null,
       customer.notes ?? null,
+      customer.type,
     ])
   })
   stmt.free()
@@ -248,7 +270,7 @@ const insertCustomers = (db: Database, customers: Customer[]) => {
 
 const insertProducts = (db: Database, products: Product[]) => {
   const stmt = db.prepare(
-    `INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -257,8 +279,13 @@ const insertProducts = (db: Database, products: Product[]) => {
       barcode=excluded.barcode,
       title=excluded.title,
       description=excluded.description,
+      mrp=excluded.mrp,
+      salePrice=excluded.salePrice,
       price=excluded.price,
       cost=excluded.cost,
+      defaultDiscount=excluded.defaultDiscount,
+      defaultDiscountType=excluded.defaultDiscountType,
+      unitId=excluded.unitId,
       stockOnHand=excluded.stockOnHand,
       reorderLevel=excluded.reorderLevel,
       isArchived=excluded.isArchived`,
@@ -274,8 +301,13 @@ const insertProducts = (db: Database, products: Product[]) => {
       product.barcode ?? null,
       product.title,
       product.description ?? null,
+      product.mrp,
+      product.salePrice,
       product.price,
       product.cost,
+      product.defaultDiscount,
+      product.defaultDiscountType,
+      product.unitId ?? null,
       product.stockOnHand,
       product.reorderLevel ?? null,
       product.isArchived ? 1 : 0,
@@ -286,7 +318,7 @@ const insertProducts = (db: Database, products: Product[]) => {
 
 const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
   const stmt = db.prepare(
-    `INSERT INTO sales_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO sales_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -296,6 +328,8 @@ const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
       issuedDate=excluded.issuedDate,
       dueDate=excluded.dueDate,
       subtotal=excluded.subtotal,
+      discount=excluded.discount,
+      discountType=excluded.discountType,
       tax=excluded.tax,
       total=excluded.total,
       notes=excluded.notes`,
@@ -312,6 +346,8 @@ const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
       order.issuedDate,
       order.dueDate ?? null,
       order.subtotal,
+      order.discount,
+      order.discountType,
       order.tax,
       order.total,
       order.notes ?? null,

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { useAuth } from '../auth/AuthProvider'
-import { useSync } from './SyncProvider'
+import { useSync } from './useSync'
 
 const SERVICE_WORKER_PATH = '/sw.js'
 

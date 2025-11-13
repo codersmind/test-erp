@@ -1,5 +1,5 @@
 import { useAuth } from '../auth/AuthProvider'
-import { useSync } from '../sync/SyncProvider'
+import { useSync } from '../sync/useSync'
 
 export const ManualSyncButton = () => {
   const { ensureDriveAccess } = useAuth()

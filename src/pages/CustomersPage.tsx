@@ -38,6 +38,7 @@ export const CustomersPage = () => {
     setSearchQuery(query)
     setPage(1)
   }
+  
 
   const customers = paginatedData?.items ?? []
   const total = paginatedData?.total ?? 0
