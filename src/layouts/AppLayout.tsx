@@ -30,66 +30,96 @@ export const AppLayout = () => {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen flex-col bg-gray-50 text-gray-900 transition-colors dark:bg-gray-950 dark:text-gray-50">
-      {/* BackgroundSyncManager placement might need adjustment based on where it truly belongs (it usually runs after sign-in) 
-          For now, keeping it at the top level as in your original code. */}
-      <BackgroundSyncManager /> 
+     <div className="flex min-h-screen bg-white transition-colors dark:bg-gray-950">
+      <BackgroundSyncManager />
 
-      <header className="border-b border-gray-200 bg-white/80 backdrop-blur dark:border-gray-800 dark:bg-gray-900/80">
-        <div className="mx-auto max-w-7xl px-4 py-4">
-          <h1 className="text-xl font-bold tracking-tight">{getDesiredFolderName()}</h1>
+      {/* --- Left Side: Branding and Value Proposition (Visual Area) --- */}
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12 bg-indigo-700 dark:bg-gray-900 relative overflow-hidden">
+        {/* Subtle Background Pattern/Shape for Visual Interest */}
+        <svg className="absolute inset-0 h-full w-full opacity-10" viewBox="0 0 100 100" preserveAspectRatio="none" fill="none">
+            <pattern id="pattern-grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                <path d="M 10 0 L 0 0 L 0 10" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-indigo-600 dark:text-gray-700" />
+            </pattern>
+            <rect width="100%" height="100%" fill="url(#pattern-grid)" />
+        </svg>
+
+        {/* Content */}
+        <div className="relative z-10 max-w-lg text-white">
+          <h1 className="text-4xl font-extrabold tracking-tight">
+            BookStore ERP: Inventory Simplified.
+          </h1>
+          <p className="mt-4 text-lg font-light opacity-80">
+            Streamline your orders, track real-time stock levels, and automate your accounting—all in one place.
+          </p>
+          <ul className="mt-6 space-y-3 text-sm font-medium">
+            <li className="flex items-center">
+              <span className="text-yellow-300 mr-2">✓</span> Real-time Sync
+            </li>
+            <li className="flex items-center">
+              <span className="text-yellow-300 mr-2">✓</span> Secure Drive Backups
+            </li>
+            <li className="flex items-center">
+              <span className="text-yellow-300 mr-2">✓</span> Offline Access
+            </li>
+          </ul>
         </div>
-      </header>
+      </div>
+      
+      {/* --- Right Side: Sign-In Form (Interaction Area) --- */}
+      <div className="flex flex-1 flex-col items-center justify-center p-8 lg:w-1/2">
+        
+        {/* Top Bar for Theme Toggle and Title on Mobile */}
+        <div className="absolute top-0 right-0 p-4 flex items-center gap-4 w-full justify-between lg:justify-end">
+            <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white lg:hidden">BookStore ERP</h2>
+            <ThemeToggleButton />
+        </div>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        {/* The Sign-In Card */}
-        <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-2xl transition dark:border-gray-800 dark:bg-gray-900/90 dark:shadow-2xl dark:shadow-indigo-900/20">
-          <div className="text-center">
-            {/* Logo/Icon placeholder can go here */}
-            {/* <div className="mx-auto h-12 w-12 text-indigo-600 dark:text-indigo-400">
-                <svg>...</svg>
-            </div> */}
+        <div className="w-full max-w-sm">
+          {/* Main Title (Visible on larger screens) */}
+          <h2 className="hidden lg:block text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+            Sign In
+          </h2>
+          <p className="mt-2 text-gray-500 dark:text-gray-400">
+            Access your complete book inventory management system.
+          </p>
+          
+          <div className="mt-8 space-y-6">
             
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              Welcome Back
-            </h2>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              Sign in to manage your inventory and sales.
-            </p>
-          </div>
-
-          <div className="mt-8 space-y-4">
-            <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-              Unlock offline data sync and secure Drive backups.
-            </p>
-            
-            {/* Primary Sign-in Button */}
+            {/* The Main Action Button */}
             <button
               type="button"
               onClick={signIn}
-              className="flex w-full items-center justify-center rounded-lg border border-indigo-500 bg-indigo-600 px-4 py-3 text-base font-semibold text-white shadow-lg transition duration-150 hover:bg-indigo-500 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:ring-offset-gray-950"
+              className="flex w-full items-center justify-center rounded-xl border border-blue-500 bg-blue-600 px-6 py-3 text-lg font-bold text-white shadow-xl transition duration-150 hover:bg-blue-500 hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 dark:ring-offset-gray-950"
             >
-              {/* Google Icon can be added here (e.g., using lucide-react or similar) */}
-              <svg className="mr-2 h-5 w-5" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">...</svg>
+              {/* Google Icon SVG Placeholder */}
+              <svg className="mr-3 h-6 w-6" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">...</svg>
               Sign in with Google
             </button>
 
-            {/* Theme Toggle is now less prominent, as it's a secondary action */}
-            <div className="flex justify-center pt-2">
-                <ThemeToggleButton />
+            {/* Separator */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300 dark:border-gray-700" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-2 text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+                  Secure access
+                </span>
+              </div>
             </div>
           </div>
-
-          <div className="mt-8 pt-4 border-t border-gray-100 dark:border-gray-800">
+          
+          {/* Footer Notes */}
+          <div className="mt-10 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              We use secure Firebase Auth to verify your Google account and request Drive permissions only once for backups.
+              We use Firebase Auth and request Drive permissions only once for data backups.
             </p>
             {/* <p className="mt-2 text-xs text-red-500 dark:text-red-400">
-              * Remember to add your Firebase keys and allowed origins for proper setup.
+              Dev Note: Add your Firebase keys and allowed origins to complete setup.
             </p> */}
           </div>
         </div>
-      </main>
+      </div>
     </div>
     )
   }
