@@ -46,6 +46,7 @@ export const customerSchema = yup.object({
   phone: yup.string().trim().nullable(),
   address: yup.string().trim().nullable(),
   state: yup.string().trim().nullable(),
+  gst: yup.string().trim().nullable(),
   notes: yup.string().trim().nullable(),
 })
 

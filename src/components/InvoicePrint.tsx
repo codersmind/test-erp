@@ -99,6 +99,9 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
   const orderSubtotal = 'subtotal' in order ? order.subtotal : 0
   const orderTax = 'tax' in order ? order.tax : 0
   const orderDiscount = 'discount' in order ? order.discount || 0 : 0
+  const orderTaxType = 'taxType' in order ? order.taxType : undefined
+  const orderCgst = 'cgst' in order ? order.cgst : undefined
+  const orderSgst = 'sgst' in order ? order.sgst : undefined
 
   return (
     <>
@@ -243,12 +246,23 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
               <span>-{orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
             </div>
           )}
-          {orderTax > 0 && (
+          {orderTax > 0 && orderTaxType === 'cgst_sgst' && orderCgst !== undefined && orderSgst !== undefined ? (
+            <>
+              <div className="totals-row">
+                <span>CGST:</span>
+                <span>{orderCgst.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
+              </div>
+              <div className="totals-row">
+                <span>SGST:</span>
+                <span>{orderSgst.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
+              </div>
+            </>
+          ) : orderTax > 0 ? (
             <div className="totals-row">
               <span>GST:</span>
               <span>{orderTax.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
             </div>
-          )}
+          ) : null}
           <div className="totals-row total">
             <span>Total:</span>
             <span>{orderTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>

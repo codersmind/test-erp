@@ -26,6 +26,42 @@ export class ErpDatabase extends Dexie {
   constructor() {
     super('erp_offline_db')
 
+    this.version(9)
+      .stores({
+        customers: 'id, tenantId, type, name, updatedAt, isArchived',
+        products: 'id, tenantId, sku, barcode, title, updatedAt, isArchived',
+        salesOrders: 'id, tenantId, customerId, status, issuedDate, updatedAt',
+        salesOrderItems: 'id, orderId, productId',
+        purchaseOrders: 'id, tenantId, supplierName, status, issuedDate, updatedAt',
+        purchaseOrderItems: 'id, orderId, productId',
+        invoices: 'id, tenantId, invoiceNumber, salesOrderId, customerId, status, issuedDate, dueDate',
+        payments: 'id, tenantId, invoiceId, customerId, paymentDate',
+        syncQueue: 'id, entity, entityId, timestamp, syncedAt',
+      })
+      .upgrade(async () => {
+        // Version 9: Added gst field to customers
+        // This is an optional field, so existing customers will have undefined values
+        // No migration needed - Dexie will handle missing fields automatically
+      })
+
+    this.version(8)
+      .stores({
+        customers: 'id, tenantId, type, name, updatedAt, isArchived',
+        products: 'id, tenantId, sku, barcode, title, updatedAt, isArchived',
+        salesOrders: 'id, tenantId, customerId, status, issuedDate, updatedAt',
+        salesOrderItems: 'id, orderId, productId',
+        purchaseOrders: 'id, tenantId, supplierName, status, issuedDate, updatedAt',
+        purchaseOrderItems: 'id, orderId, productId',
+        invoices: 'id, tenantId, invoiceNumber, salesOrderId, customerId, status, issuedDate, dueDate',
+        payments: 'id, tenantId, invoiceId, customerId, paymentDate',
+        syncQueue: 'id, entity, entityId, timestamp, syncedAt',
+      })
+      .upgrade(async () => {
+        // Version 8: Added taxType, cgst, sgst fields to salesOrders and purchaseOrders
+        // These are optional fields, so existing orders will have undefined values
+        // No migration needed - Dexie will handle missing fields automatically
+      })
+
     this.version(7)
       .stores({
         customers: 'id, tenantId, type, name, updatedAt, isArchived',

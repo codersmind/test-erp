@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createCustomer, listCustomers } from '../db/localDataService'
+import { createCustomer, listCustomers, updateCustomer } from '../db/localDataService'
 import type { Customer } from '../db/schema'
 
 const CUSTOMERS_KEY = ['customers']
@@ -22,6 +22,20 @@ export const useCreateCustomer = () => {
       )
       queryClient.invalidateQueries({ queryKey: CUSTOMERS_KEY })
       queryClient.invalidateQueries({ queryKey: ['customers', customer.type] })
+    },
+  })
+}
+
+export const useUpdateCustomer = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateCustomer>[1] }) =>
+      updateCustomer(id, input),
+    onSuccess: (customer: Customer) => {
+      queryClient.invalidateQueries({ queryKey: CUSTOMERS_KEY })
+      queryClient.invalidateQueries({ queryKey: ['customers', customer.type] })
+      queryClient.invalidateQueries({ queryKey: ['customers', 'paginated'] })
     },
   })
 }

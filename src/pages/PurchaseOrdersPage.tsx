@@ -8,6 +8,7 @@ import { LazyProductPicker } from '../components/LazyProductPicker'
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
 import { InvoicePrint } from '../components/InvoicePrint'
+import Datepicker from 'react-tailwindcss-datepicker'
 import { db } from '../db/database'
 import { getProduct, getCustomer } from '../db/localDataService'
 import type { Customer, Product, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
@@ -80,7 +81,8 @@ const PurchaseOrderRow = ({ order }: { order: PurchaseOrder }) => {
 
 export const PurchaseOrdersPage = () => {
   const [page, setPage] = useState(1)
-  const { data: paginatedData, isPending } = usePurchaseOrdersPaginated(page, PAGE_SIZE)
+  const [filters, setFilters] = useState<{ supplierName?: string; startDate?: string; endDate?: string }>({})
+  const { data: paginatedData, isPending } = usePurchaseOrdersPaginated(page, PAGE_SIZE, filters)
   const [form, setForm] = useState({
     supplierId: '',
     lineItems: [{ productId: '', quantity: 1, unitCost: 0 }],
@@ -316,7 +318,55 @@ export const PurchaseOrdersPage = () => {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <h2 className="text-lg font-semibold">Recent purchase orders</h2>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-semibold">Recent purchase orders</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={filters.supplierName || ''}
+              onChange={(e) => {
+                setFilters((prev) => ({ ...prev, supplierName: e.target.value || undefined }))
+                setPage(1) // Reset to first page when filter changes
+              }}
+              placeholder="Filter by supplier..."
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:w-48"
+            />
+            <div className="w-full sm:w-64">
+              <Datepicker
+                value={{
+                  startDate: filters.startDate ? new Date(filters.startDate) : null,
+                  endDate: filters.endDate ? new Date(filters.endDate) : null,
+                }}
+                onChange={(value) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    startDate: value?.startDate ? new Date(value.startDate).toISOString().split('T')[0] : undefined,
+                    endDate: value?.endDate ? new Date(value.endDate).toISOString().split('T')[0] : undefined,
+                  }))
+                  setPage(1)
+                }}
+                useRange={true}
+                displayFormat="MMM DD, YYYY"
+                inputClassName="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                containerClassName="relative"
+                placeholder="Select date range"
+                showShortcuts={true}
+                primaryColor="blue"
+              />
+            </div>
+            {(filters.supplierName || filters.startDate || filters.endDate) && (
+              <button
+                onClick={() => {
+                  setFilters({})
+                  setPage(1)
+                }}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
             <thead>

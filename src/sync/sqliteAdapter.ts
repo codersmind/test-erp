@@ -59,6 +59,7 @@ const mapCustomerRow = (row: Record<string, unknown>): Customer => ({
   phone: toOptionalString(row.phone),
   address: toOptionalString(row.address),
   state: toOptionalString(row.state),
+  gst: toOptionalString(row.gst),
   notes: toOptionalString(row.notes),
   type: toStringValue(row.type) as Customer['type'],
 })
@@ -99,6 +100,9 @@ const mapSalesOrderRow = (row: Record<string, unknown>): SalesOrder => ({
   dueDate: toOptionalString(row.dueDate),
   subtotal: toNumberValue(row.subtotal),
   tax: toNumberValue(row.tax),
+  taxType: row.taxType ? (toStringValue(row.taxType) as 'gst' | 'cgst_sgst') : undefined,
+  cgst: row.cgst != null ? toNumberValue(row.cgst) : undefined,
+  sgst: row.sgst != null ? toNumberValue(row.sgst) : undefined,
   total: toNumberValue(row.total),
   notes: toOptionalString(row.notes),
 })
@@ -125,6 +129,9 @@ const mapPurchaseOrderRow = (row: Record<string, unknown>): PurchaseOrder => ({
   expectedDate: toOptionalString(row.expectedDate),
   subtotal: toNumberValue(row.subtotal),
   tax: toNumberValue(row.tax),
+  taxType: row.taxType ? (toStringValue(row.taxType) as 'gst' | 'cgst_sgst') : undefined,
+  cgst: row.cgst != null ? toNumberValue(row.cgst) : undefined,
+  sgst: row.sgst != null ? toNumberValue(row.sgst) : undefined,
   total: toNumberValue(row.total),
   notes: toOptionalString(row.notes),
   addToInventory: row.addToInventory != null ? toBoolean(toNumberValue(row.addToInventory)) : true, // Default to true if not set
@@ -153,6 +160,7 @@ const tableCreators = [
       phone TEXT,
       address TEXT,
       state TEXT,
+      gst TEXT,
       notes TEXT,
       type TEXT
     );`,
@@ -191,6 +199,9 @@ const tableCreators = [
       discount REAL,
       discountType TEXT,
       tax REAL,
+      taxType TEXT,
+      cgst REAL,
+      sgst REAL,
       total REAL,
       notes TEXT
     );`,
@@ -215,6 +226,9 @@ const tableCreators = [
       expectedDate TEXT,
       subtotal REAL,
       tax REAL,
+      taxType TEXT,
+      cgst REAL,
+      sgst REAL,
       total REAL,
       notes TEXT,
       addToInventory INTEGER
@@ -234,7 +248,7 @@ const tableCreators = [
 
 const insertCustomers = (db: Database, customers: Customer[]) => {
   const stmt = db.prepare(
-    `INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -246,6 +260,7 @@ const insertCustomers = (db: Database, customers: Customer[]) => {
       phone=excluded.phone,
       address=excluded.address,
       state=excluded.state,
+      gst=excluded.gst,
       notes=excluded.notes,
       type=excluded.type`,
   )
@@ -263,6 +278,7 @@ const insertCustomers = (db: Database, customers: Customer[]) => {
       customer.phone ?? null,
       customer.address ?? null,
       customer.state ?? null,
+      customer.gst ?? null,
       customer.notes ?? null,
       customer.type,
     ])
@@ -320,7 +336,7 @@ const insertProducts = (db: Database, products: Product[]) => {
 
 const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
   const stmt = db.prepare(
-    `INSERT INTO sales_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO sales_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -333,6 +349,9 @@ const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
       discount=excluded.discount,
       discountType=excluded.discountType,
       tax=excluded.tax,
+      taxType=excluded.taxType,
+      cgst=excluded.cgst,
+      sgst=excluded.sgst,
       total=excluded.total,
       notes=excluded.notes`,
   )
@@ -351,6 +370,9 @@ const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
       order.discount,
       order.discountType,
       order.tax,
+      order.taxType ?? null,
+      order.cgst ?? null,
+      order.sgst ?? null,
       order.total,
       order.notes ?? null,
     ])
@@ -384,7 +406,7 @@ const insertSalesOrderItems = (db: Database, items: SalesOrderItem[]) => {
 
 const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => {
   const stmt = db.prepare(
-    `INSERT INTO purchase_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO purchase_orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,
@@ -395,6 +417,9 @@ const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => 
       expectedDate=excluded.expectedDate,
       subtotal=excluded.subtotal,
       tax=excluded.tax,
+      taxType=excluded.taxType,
+      cgst=excluded.cgst,
+      sgst=excluded.sgst,
       total=excluded.total,
       notes=excluded.notes,
       addToInventory=excluded.addToInventory`,
@@ -412,6 +437,9 @@ const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => 
       order.expectedDate ?? null,
       order.subtotal,
       order.tax,
+      order.taxType ?? null,
+      order.cgst ?? null,
+      order.sgst ?? null,
       order.total,
       order.notes ?? null,
       order.addToInventory ?? true ? 1 : 0,

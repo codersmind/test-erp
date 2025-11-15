@@ -17,6 +17,7 @@ export interface Customer extends BaseEntity {
   phone?: string
   address?: string
   state?: string // State for GST calculation
+  gst?: string // GST number (optional)
   notes?: string
   balance: number
   isArchived: boolean
@@ -50,6 +51,9 @@ export interface SalesOrder extends BaseEntity {
   discount: number // Order-level discount
   discountType: 'amount' | 'percentage' // Discount type
   tax: number
+  taxType?: 'gst' | 'cgst_sgst' // Tax type used for this order
+  cgst?: number // CGST amount (when taxType is 'cgst_sgst')
+  sgst?: number // SGST amount (when taxType is 'cgst_sgst')
   total: number
   notes?: string
 }
@@ -73,6 +77,9 @@ export interface PurchaseOrder extends BaseEntity {
   expectedDate?: string
   subtotal: number
   tax: number
+  taxType?: 'gst' | 'cgst_sgst' // Tax type used for this order
+  cgst?: number // CGST amount (when taxType is 'cgst_sgst')
+  sgst?: number // SGST amount (when taxType is 'cgst_sgst')
   total: number
   notes?: string
   addToInventory?: boolean // Whether items should be added to product inventory

@@ -23,6 +23,7 @@
     "@electron-forge/maker-zip": "^7.10.2",
     "@electron-forge/plugin-vite": "^7.10.2",
     "@electron-forge/publisher-github": "^7.10.2",
+    "@tailwindcss/forms": "^0.5.10",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
@@ -38,6 +39,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.7",
+    "dayjs": "^1.11.19",
     "dexie": "^4.2.1",
     "dexie-react-hooks": "^4.2.0",
     "fflate": "^0.8.2",
@@ -49,6 +51,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.5",
+    "react-tailwindcss-datepicker": "^2.0.0",
     "sql.js": "^1.13.0",
     "yup": "^1.7.1",
     "zustand": "^5.0.8"

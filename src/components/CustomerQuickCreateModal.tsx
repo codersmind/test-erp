@@ -29,6 +29,7 @@ export const CustomerQuickCreateModal = ({
       phone: null,
       address: null,
       state: null,
+      gst: null,
       notes: null,
     },
     validationSchema: customerSchema,
@@ -41,6 +42,7 @@ export const CustomerQuickCreateModal = ({
           phone: values.phone || undefined,
           address: values.address || undefined,
           state: values.state || undefined,
+          gst: values.gst || undefined,
         })
         onCustomerCreated(customer)
         resetForm()
@@ -102,6 +104,11 @@ export const CustomerQuickCreateModal = ({
                   </option>
                 ))}
               </FormField>
+              <FormField
+                name="gst"
+                label="GST Number"
+                placeholder="GSTIN (optional)"
+              />
             </div>
             <div className="mt-6 flex justify-end gap-3">
               <button

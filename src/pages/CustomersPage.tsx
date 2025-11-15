@@ -3,15 +3,17 @@ import { type FormEvent, useState } from 'react'
 import { useCreateCustomer } from '../hooks/useCustomers'
 import { useCustomersPaginated } from '../hooks/useCustomersPaginated'
 import { Pagination } from '../components/Pagination'
+import { CustomerEditModal } from '../components/CustomerEditModal'
 import type { Customer, CustomerType } from '../db/schema'
 
 const PAGE_SIZE = 20
 
 export const CustomersPage = () => {
-  const [form, setForm] = useState({ name: '', type: 'customer' as CustomerType, email: '', phone: '' })
+  const [form, setForm] = useState({ name: '', type: 'customer' as CustomerType, email: '', phone: '', gst: '' })
   const [activeTab, setActiveTab] = useState<CustomerType>('customer')
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const { data: paginatedData, isPending } = useCustomersPaginated(activeTab, page, PAGE_SIZE, searchQuery)
   const createCustomerMutation = useCreateCustomer()
 
@@ -24,8 +26,9 @@ export const CustomersPage = () => {
       type: form.type,
       email: form.email.trim() || undefined,
       phone: form.phone.trim() || undefined,
+      gst: form.gst.trim() || undefined,
     })
-    setForm({ name: '', type: 'customer', email: '', phone: '' })
+    setForm({ name: '', type: 'customer', email: '', phone: '', gst: '' })
   }
 
   const handleTabChange = (tab: CustomerType) => {
@@ -93,6 +96,16 @@ export const CustomersPage = () => {
               placeholder="+62 000 000 000"
             />
           </label>
+          <label>
+            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300">GST Number</span>
+            <input
+              type="text"
+              value={form.gst}
+              onChange={(event) => setForm((prev) => ({ ...prev, gst: event.target.value }))}
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              placeholder="GSTIN (optional)"
+            />
+          </label>
           <div className="flex items-end justify-end sm:col-span-2 lg:col-span-1">
             <button
               type="submit"
@@ -153,13 +166,23 @@ export const CustomersPage = () => {
           ) : customers.length ? (
             customers.map((customer: Customer) => (
               <li key={customer.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+                <div className="flex-1">
                   <p className="font-semibold">{customer.name}</p>
                   <p className="text-xs text-slate-500">
                     {customer.email ?? '—'} · {customer.phone ?? '—'}
+                    {customer.gst && ` · GST: ${customer.gst}`}
                   </p>
                 </div>
-                <span className="text-xs text-slate-400">Updated {new Date(customer.updatedAt).toLocaleString()}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400">Updated {new Date(customer.updatedAt).toLocaleString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCustomer(customer)}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    Edit
+                  </button>
+                </div>
               </li>
             ))
           ) : (
@@ -178,6 +201,11 @@ export const CustomersPage = () => {
           </div>
         )}
       </section>
+      <CustomerEditModal
+        isOpen={editingCustomer !== null}
+        onClose={() => setEditingCustomer(null)}
+        customer={editingCustomer}
+      />
     </div>
   )
 }

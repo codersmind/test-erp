@@ -14,7 +14,7 @@ import type {
 } from './schema'
 import { DEFAULT_TENANT_ID, nowIso } from './utils'
 
-type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'state' | 'notes'>
+type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'state' | 'gst' | 'notes'>
 
 type ProductInput = Pick<
   Product,
@@ -90,7 +90,8 @@ export const listCustomersByTypePaginated = async (
       (customer) =>
         customer.name.toLowerCase().includes(searchTerm) ||
         (customer.email?.toLowerCase().includes(searchTerm) ?? false) ||
-        (customer.phone?.toLowerCase().includes(searchTerm) ?? false),
+        (customer.phone?.toLowerCase().includes(searchTerm) ?? false) ||
+        (customer.gst?.toLowerCase().includes(searchTerm) ?? false),
     )
   }
 
@@ -128,6 +129,7 @@ export const createCustomer = async (input: CustomerInput & { tenantId?: string 
     phone: input.phone,
     address: input.address,
     state: input.state,
+    gst: input.gst,
     notes: input.notes,
   }
 
@@ -371,14 +373,31 @@ export const adjustProductStock = async (id: string, quantity: number) => {
 
 export const listSalesOrders = () => db.salesOrders.orderBy('issuedDate').reverse().toArray()
 
-export const listSalesOrdersPaginated = async (page: number, pageSize: number) => {
-  const total = await db.salesOrders.count()
-  const items = await db.salesOrders
-    .orderBy('issuedDate')
-    .reverse()
-    .offset((page - 1) * pageSize)
-    .limit(pageSize)
-    .toArray()
+export const listSalesOrdersPaginated = async (
+  page: number,
+  pageSize: number,
+  filters?: { customerId?: string; startDate?: string; endDate?: string },
+) => {
+  let query = db.salesOrders.orderBy('issuedDate').reverse()
+
+  // Apply filters
+  if (filters?.customerId) {
+    query = query.filter((order) => order.customerId === filters.customerId)
+  }
+  if (filters?.startDate) {
+    const startDate = new Date(filters.startDate)
+    startDate.setHours(0, 0, 0, 0)
+    query = query.filter((order) => new Date(order.issuedDate) >= startDate)
+  }
+  if (filters?.endDate) {
+    const endDate = new Date(filters.endDate)
+    endDate.setHours(23, 59, 59, 999)
+    query = query.filter((order) => new Date(order.issuedDate) <= endDate)
+  }
+
+  const allFiltered = await query.toArray()
+  const total = allFiltered.length
+  const items = allFiltered.slice((page - 1) * pageSize, page * pageSize)
 
   return {
     items,
@@ -440,13 +459,22 @@ export const createSalesOrder = async (
 
   // Calculate tax using new taxSettings or fallback to legacy taxRate
   let tax = 0
+  let taxType: 'gst' | 'cgst_sgst' | undefined = undefined
+  let cgst: number | undefined = undefined
+  let sgst: number | undefined = undefined
+  
   if (input.taxSettings) {
     const { calculateTax } = await import('../utils/taxSettings')
     const taxCalc = calculateTax(subtotalAfterDiscount, input.taxSettings)
     tax = taxCalc.tax
+    taxType = input.taxSettings.type
+    cgst = taxCalc.cgst
+    sgst = taxCalc.sgst
   } else {
     const taxRate = input.taxRate ?? 0
     tax = subtotalAfterDiscount * (taxRate / 100)
+    // Legacy orders without taxSettings default to 'gst' type
+    taxType = 'gst'
   }
   const total = subtotalAfterDiscount + tax
 
@@ -464,6 +492,9 @@ export const createSalesOrder = async (
     discount: orderDiscount,
     discountType: discountType,
     tax,
+    taxType,
+    cgst,
+    sgst,
     total,
     notes: input.notes,
   }
@@ -506,14 +537,32 @@ export const updateSalesOrderStatus = async (id: string, status: SalesOrder['sta
 
 export const listPurchaseOrders = () => db.purchaseOrders.orderBy('issuedDate').reverse().toArray()
 
-export const listPurchaseOrdersPaginated = async (page: number, pageSize: number) => {
-  const total = await db.purchaseOrders.count()
-  const items = await db.purchaseOrders
-    .orderBy('issuedDate')
-    .reverse()
-    .offset((page - 1) * pageSize)
-    .limit(pageSize)
-    .toArray()
+export const listPurchaseOrdersPaginated = async (
+  page: number,
+  pageSize: number,
+  filters?: { supplierName?: string; startDate?: string; endDate?: string },
+) => {
+  let query = db.purchaseOrders.orderBy('issuedDate').reverse()
+
+  // Apply filters
+  if (filters?.supplierName) {
+    const searchTerm = filters.supplierName.toLowerCase()
+    query = query.filter((order) => order.supplierName.toLowerCase().includes(searchTerm))
+  }
+  if (filters?.startDate) {
+    const startDate = new Date(filters.startDate)
+    startDate.setHours(0, 0, 0, 0)
+    query = query.filter((order) => new Date(order.issuedDate) >= startDate)
+  }
+  if (filters?.endDate) {
+    const endDate = new Date(filters.endDate)
+    endDate.setHours(23, 59, 59, 999)
+    query = query.filter((order) => new Date(order.issuedDate) <= endDate)
+  }
+
+  const allFiltered = await query.toArray()
+  const total = allFiltered.length
+  const items = allFiltered.slice((page - 1) * pageSize, page * pageSize)
 
   return {
     items,

@@ -11,10 +11,14 @@ export interface PaginatedPurchaseOrdersResult {
   totalPages: number
 }
 
-export const usePurchaseOrdersPaginated = (page: number, pageSize: number) =>
+export const usePurchaseOrdersPaginated = (
+  page: number,
+  pageSize: number,
+  filters?: { supplierName?: string; startDate?: string; endDate?: string },
+) =>
   useQuery<PaginatedPurchaseOrdersResult>({
-    queryKey: ['purchaseOrders', 'paginated', page, pageSize],
-    queryFn: () => listPurchaseOrdersPaginated(page, pageSize),
+    queryKey: ['purchaseOrders', 'paginated', page, pageSize, filters],
+    queryFn: () => listPurchaseOrdersPaginated(page, pageSize, filters),
     placeholderData: keepPreviousData,
   })
 
