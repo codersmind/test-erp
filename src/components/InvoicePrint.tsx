@@ -47,7 +47,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
     if (!printWindow) return
 
     // Use format details if available, otherwise use settings
-    const companyInfo = formatDetails || settings
+    // const companyInfo = formatDetails || settings
     const showLogo = formatDetails?.showLogo ?? settings.showLogo
     const logoUrl = formatDetails?.logoUrl ?? settings.logoUrl
     const companyName = formatDetails?.companyName || settings.companyName
@@ -55,7 +55,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
     const companyAddress = formatDetails?.companyAddress || settings.companyAddress
     const companyPhone = formatDetails?.companyPhone || settings.companyPhone
     const companyEmail = formatDetails?.companyEmail || settings.companyEmail
-    const footerText = formatDetails?.footerText || settings.footerText || 'Thank you for your business!'
+    // const footerText = formatDetails?.footerText || settings.footerText || 'Thank you for your business!'
     
     // Build header with company info if available
     let headerContent = `
@@ -198,7 +198,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
           </div>
         </div>
 
-        <table>
+        <table className='my-4'>
           <thead>
             <tr>
               <th>Item</th>

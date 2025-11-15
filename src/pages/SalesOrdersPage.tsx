@@ -798,10 +798,10 @@ export const SalesOrdersPage = () => {
       {latestOrder && latestItems && latestItems.length > 0 && (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
           <h2 className="text-lg font-semibold">Printable receipt preview</h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          {/* <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
             Connect a receipt printer in Electron to print this layout directly. Customize the template under
             `components/ReceiptPreview.tsx`.
-          </p>
+          </p> */}
           <div className="mt-4">
             <ReceiptPreview order={latestOrder} items={latestItems} />
           </div>

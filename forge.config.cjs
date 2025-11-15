@@ -3,10 +3,6 @@ const { VitePlugin } = require('@electron-forge/plugin-vite')
 module.exports = {
   packagerConfig: {
     executableName: 'bookstore-erp',
-    asar: true,
-    extraResource: [
-      './src/splash',
-    ]
   },
   rebuildConfig: {},
   makers: [

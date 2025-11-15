@@ -1,152 +1,107 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, Notification, screen } from 'electron';
-import { join } from 'node:path';
-import { autoUpdater } from 'electron-updater';
+import path from 'path';
 
-// ───── Environment ─────
-const IS_DEV = import.meta.env.DEV || !!process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
-const RENDERER_NAME = process.env.MAIN_WINDOW_VITE_NAME ?? 'main_window';
-const PRELOAD_PATH = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY ?? join(__dirname, '../preload/index.cjs');
+const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { join } = require('node:path')
+// const {autoUpdater} = require('electron-updater')
 
-// ───── Global Windows ─────
-let splashWindow: BrowserWindow | null = null;
-let mainWindow: BrowserWindow | null = null;
+// === Environment Variables ===
+const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
+// const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
+const MAIN_WINDOW_VITE_NAME = process.env.MAIN_WINDOW_VITE_NAME || 'main_window'
+const MAIN_WINDOW_PRELOAD_VITE_ENTRY = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY
 
-// ───── Create Splash (centered, frameless) ─────
-function createSplash() {
-  // const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+const createWindow = async () => {
 
-  splashWindow = new BrowserWindow({
-    width: 400,
-    height: 260,
-    transparent: true,
+    const splash = new BrowserWindow({
+    width: 600,
+    height: 400,
+    minWidth: 600,
+    minHeight: 400,
+    webPreferences: {
+      nodeIntegration: true,
+    },
     frame: false,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: false,
-    center: true,
-    webPreferences: { nodeIntegration: false },
+    transparent: true,
   });
+  
+  splash.center();
 
-  splashWindow.loadFile(join(__dirname, '../splash/index.html'));
-
-  splashWindow.once('ready-to-show', () => {
-    splashWindow?.show();
-    // Close splash after 2.5 seconds → open main
-    setTimeout(() => {
-      splashWindow?.close();
-      createMainWindow();
-    }, 2500);
-  });
-
-  splashWindow.on('closed', () => (splashWindow = null));
-}
-
-// ───── Create Main Window (hidden until ready) ─────
-async function createMainWindow() {
-  mainWindow = new BrowserWindow({
+  const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    resizable: true,
     show: false,
     webPreferences: {
-      preload: PRELOAD_PATH,
+      preload: MAIN_WINDOW_PRELOAD_VITE_ENTRY ?? join(__dirname, '../preload/index.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
     },
-  });
+  })
 
-  if (IS_DEV) {
-    await mainWindow.loadURL(process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL!);
-    mainWindow.webContents.openDevTools();
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    await splash.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL + 'splash/index.html');
+    await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    mainWindow.webContents.openDevTools()
   } else {
-    await mainWindow.loadFile(join(__dirname, `../renderer/${RENDERER_NAME}/index.html`));
+    await splash.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/splash/index.html`))
+    await mainWindow.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`))
   }
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
+  
+  // Hide splash and show main window after 2.5 seconds
+  setTimeout(() => { splash?.close(); mainWindow.show(); }, 2500);
+  
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
-
-  mainWindow.on('closed', () => (mainWindow = null));
+  mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
 }
 
-// ───── App Lifecycle ─────
-app.whenReady().then(() => {
-  createSplash();
-  autoUpdater.checkForUpdatesAndNotify();
-});
+app.whenReady().then(createWindow)
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('activate', () => {
-  if (!mainWindow) createMainWindow();
-});
-
-// ───── Auto-Updater Events ─────
-autoUpdater.allowPrerelease = false;
-
-autoUpdater.on('checking-for-update', () => {
-  new Notification({ title: 'Update', body: 'Checking for updates...' }).show();
-});
-
-autoUpdater.on('update-available', (info) => {
-  new Notification({
-    title: 'Update Available',
-    body: `Downloading v${info.version}...`,
-  }).show();
-  autoUpdater.downloadUpdate();
-});
-
-autoUpdater.on('download-progress', (progress) => {
-  mainWindow?.webContents.send('update-progress', progress);
-});
-
-autoUpdater.on('update-downloaded', async () => {
-  new Notification({ title: 'Update Ready', body: 'Restart to apply.' }).show();
-
-  const { response } = await dialog.showMessageBox(mainWindow!, {
-    type: 'info',
-    buttons: ['Restart Now', 'Later'],
-    title: 'Update Ready',
-    message: 'New version downloaded.',
-  });
-
-  if (response === 0) autoUpdater.quitAndInstall();
-});
-
-autoUpdater.on('error', (err) => {
-  console.error('Updater error:', err);
-  new Notification({ title: 'Update Failed', body: 'Check internet.' }).show();
-});
-
-ipcMain.handle('check-for-update', () => autoUpdater.checkForUpdates());
-
-// ───── Secure Storage (keytar) ─────
-let keytar: typeof import('keytar') | null = null;
-const getKeytar = () => {
-  if (keytar) return keytar;
-  try { keytar = require('keytar'); } catch (e) {
-    console.warn('keytar not available', e);
+  if (process.platform !== 'darwin') {
+    app.quit()
   }
-  return keytar;
-};
-const SERVICE_NAME = 'BookStoreERP';
+})
 
-ipcMain.handle('secure-storage:get', async (_ev, scope: string) => {
-  const kt = getKeytar();
-  return kt ? await kt.getPassword(SERVICE_NAME, scope) : null;
-});
-ipcMain.handle('secure-storage:set', async (_ev, scope: string, value: string) => {
-  const kt = getKeytar();
-  if (kt) await kt.setPassword(SERVICE_NAME, scope, value);
-});
-ipcMain.handle('secure-storage:clear', async (_ev, scope: string) => {
-  const kt = getKeytar();
-  if (kt) await kt.deletePassword(SERVICE_NAME, scope);
-});
+app.on('activate', async () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    await createWindow()
+  }
+})
+
+let keytar: typeof import('keytar') | null = null
+
+const getKeytar = () => {
+  if (keytar) return keytar
+  try {
+    keytar = require('keytar')
+    return keytar
+  } catch (error) {
+    console.warn('keytar module not available. Tokens will not be stored securely.', error)
+    return null
+  }
+}
+
+const SERVICE_NAME = 'BookStoreERP'
+
+ipcMain.handle('secure-storage:get', async (_:any, scope: string) => {
+  const instance = getKeytar()
+  if (!instance) return null
+  return instance.getPassword(SERVICE_NAME, scope)
+})
+
+ipcMain.handle('secure-storage:set', async (_:any, scope: string, value: string) => {
+  const instance = getKeytar()
+  if (!instance) return
+  await instance.setPassword(SERVICE_NAME, scope, value)
+})
+
+ipcMain.handle('secure-storage:clear', async (_:any, scope: string) => {
+  const instance = getKeytar()
+  if (!instance) return
+  await instance.deletePassword(SERVICE_NAME, scope)
+})
+

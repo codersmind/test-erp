@@ -7,7 +7,8 @@ export const SyncStatus = () => {
   return (
     <div className="text-xs text-slate-500 dark:text-slate-400">
       {syncError ? (
-        <span className="text-red-500">Sync failed: {syncError}</span>
+        // <span className="text-red-500">Sync failed: {syncError}</span>
+        <span className="text-red-500">Sync failed: </span>
       ) : lastSyncedAt ? (
         <span>Last sync {formatDistanceToNowStrict(lastSyncedAt)} ago</span>
       ) : (
