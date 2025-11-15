@@ -56,7 +56,7 @@ export const CustomerEditModal = ({ isOpen, onClose, customer }: CustomerEditMod
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full  max-h-[90vh] max-w-md rounded-xl border overflow-auto border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
