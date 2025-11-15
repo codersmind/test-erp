@@ -49,7 +49,7 @@ const PurchaseOrderRow = ({ order }: { order: PurchaseOrder }) => {
           {items.length} item{items.length !== 1 ? 's' : ''}
         </td>
         <td className="whitespace-nowrap px-3 py-4 text-right text-sm text-slate-500 dark:text-slate-400">
-          {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+          {order.total.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
         </td>
         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
           <button
@@ -264,7 +264,7 @@ export const PurchaseOrdersPage = () => {
                     <div className="mt-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
                       {(item.quantity * item.unitCost).toLocaleString(undefined, {
                         style: 'currency',
-                        currency: 'USD',
+                        currency: 'INR',
                       })}
                     </div>
                   </div>
@@ -302,7 +302,7 @@ export const PurchaseOrdersPage = () => {
                 : 'Items will be recorded in purchase order only, without updating product stock.'}
             </p>
             <div className="flex items-center justify-between">
-              <p className="text-lg font-semibold">Total: {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</p>
+              <p className="text-lg font-semibold">Total: {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</p>
               <button
                 type="submit"
                 disabled={createPurchaseOrderMutation.isPending || !form.supplierId || totalAmount === 0}

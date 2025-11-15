@@ -11,6 +11,7 @@ export interface CustomPrintFormat {
   showLogo: boolean
   logoUrl?: string
   companyName?: string
+  companyGst?: string
   companyAddress?: string
   companyPhone?: string
   companyEmail?: string
@@ -26,6 +27,7 @@ export interface PrintSettings {
   showLogo: boolean
   logoUrl?: string
   companyName?: string
+  companyGst?: string
   companyAddress?: string
   companyPhone?: string
   companyEmail?: string
@@ -42,6 +44,7 @@ const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   fontSize: 'medium',
   showLogo: false,
   companyName: '',
+  companyGst: '',
   companyAddress: '',
   companyPhone: '',
   companyEmail: '',

@@ -268,12 +268,12 @@ export const ProductsPage = () => {
                       <td className="px-3 py-3 text-slate-500">{product.barcode ?? '—'}</td>
                       <td className="px-3 py-3 text-right">
                         <span className={mrp > salePrice ? 'line-through text-slate-400' : ''}>
-                          {mrp.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                          {mrp.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                         </span>
                       </td>
                       <td className="px-3 py-3 text-right">
                         <span className="font-semibold">
-                          {salePrice.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                          {salePrice.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                         </span>
                         {discount > 0 && (
                           <span className="ml-1 text-xs text-green-600 dark:text-green-400">
@@ -282,7 +282,7 @@ export const ProductsPage = () => {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        {product.cost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        {product.cost.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                       </td>
                     <td className="px-3 py-3 text-right">
                       <span

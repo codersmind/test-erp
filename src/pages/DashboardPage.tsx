@@ -25,14 +25,14 @@ export const DashboardPage = () => {
           <StatCard label="Pending sync items" value={pendingCount} />
         </div>
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {/* <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h3 className="text-base font-semibold">Manual workflow</h3>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
           Capture sales, purchases, and customer data offline. When you have connectivity, trigger a manual sync from the
           header to upload a snapshot to Google Drive. Replace the sync service in <code>sync/googleDriveClient.ts</code>{' '}
           with actual Drive API calls when you&apos;re ready.
         </p>
-      </section>
+      </section> */}
     </div>
   )
 }

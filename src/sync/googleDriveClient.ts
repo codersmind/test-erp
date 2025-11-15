@@ -20,7 +20,7 @@ const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
 const SYNC_FILE_NAME = 'bookstore-erp.sqlite.zip'
 const FOLDER_STORAGE_KEY = 'driveFolderId'
 
-const getDesiredFolderName = () => import.meta.env.VITE_DRIVE_APP_FOLDER_NAME ?? 'BookStoreERP'
+export const getDesiredFolderName = () => import.meta.env.VITE_DRIVE_APP_FOLDER_NAME ?? 'BookStoreERP'
 
 type DriveFileResult = { id: string; modifiedTime: string }
 

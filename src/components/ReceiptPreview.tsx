@@ -28,7 +28,7 @@ export const ReceiptPreview = ({ order, items }: ReceiptPreviewProps) => {
               <td className="py-1">{item.productId}</td>
               <td className="py-1 text-right">{item.quantity}</td>
               <td className="py-1 text-right">
-                {item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                {item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
               </td>
             </tr>
           ))}
@@ -38,7 +38,7 @@ export const ReceiptPreview = ({ order, items }: ReceiptPreviewProps) => {
             <td className="pt-2">Items: {totalQuantity}</td>
             <td />
             <td className="pt-2 text-right">
-              {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+              {order.total.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
             </td>
           </tr>
         </tfoot>

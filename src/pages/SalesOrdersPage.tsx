@@ -58,7 +58,7 @@ const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
           {items.length} item{items.length !== 1 ? 's' : ''}
         </td>
         <td className="whitespace-nowrap px-3 py-4 text-right text-sm text-slate-500 dark:text-slate-400">
-          {order.total.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+          {order.total.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
         </td>
         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
           <button
@@ -469,7 +469,7 @@ export const SalesOrdersPage = () => {
                     <div className="mt-1 rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
                       {(item.quantity * item.unitPrice - item.discount).toLocaleString(undefined, {
                         style: 'currency',
-                        currency: 'USD',
+                        currency: 'INR',
                       })}
                     </div>
                   </div>
@@ -642,7 +642,7 @@ export const SalesOrdersPage = () => {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Subtotal</span>
                   <span className="font-medium text-slate-900 dark:text-slate-50">
-                    {subtotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                    {subtotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                   </span>
                 </div>
 
@@ -668,13 +668,13 @@ export const SalesOrdersPage = () => {
                       }
                       className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     >
-                      <option value="amount">$</option>
+                      <option value="amount">₹</option>
                       <option value="percentage">%</option>
                     </select>
                   </div>
                   {orderDiscountAmount > 0 && (
                     <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                      -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                      -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                     </span>
                   )}
                 </div>
@@ -684,7 +684,7 @@ export const SalesOrdersPage = () => {
                   <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
                     <span className="text-slate-600 dark:text-slate-400">Subtotal after discount</span>
                     <span className="font-medium text-slate-900 dark:text-slate-50">
-                      {subtotalAfterDiscount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                      {subtotalAfterDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                     </span>
                   </div>
                 )}
@@ -697,7 +697,7 @@ export const SalesOrdersPage = () => {
                         GST ({form.gstRate}%)
                       </span>
                       <span className="font-medium text-slate-900 dark:text-slate-50">
-                        {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        {taxCalculation.tax.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                       </span>
                     </div>
                   ) : (
@@ -707,7 +707,7 @@ export const SalesOrdersPage = () => {
                           CGST ({form.cgstRate}%)
                         </span>
                         <span className="font-medium text-slate-900 dark:text-slate-50">
-                          {taxCalculation.cgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
+                          {taxCalculation.cgst?.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) ?? '$0.00'}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
@@ -715,7 +715,7 @@ export const SalesOrdersPage = () => {
                           SGST ({form.sgstRate}%)
                         </span>
                         <span className="font-medium text-slate-900 dark:text-slate-50">
-                          {taxCalculation.sgst?.toLocaleString(undefined, { style: 'currency', currency: 'USD' }) ?? '$0.00'}
+                          {taxCalculation.sgst?.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) ?? '$0.00'}
                         </span>
                       </div>
                     </div>
@@ -726,7 +726,7 @@ export const SalesOrdersPage = () => {
                 <div className="flex items-center justify-between border-t-2 border-slate-300 pt-3 dark:border-slate-600">
                   <span className="text-base font-semibold text-slate-900 dark:text-slate-50">Total</span>
                   <span className="text-lg font-bold text-slate-900 dark:text-slate-50">
-                    {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                    {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                   </span>
                 </div>
               </div>

@@ -51,6 +51,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
     const showLogo = formatDetails?.showLogo ?? settings.showLogo
     const logoUrl = formatDetails?.logoUrl ?? settings.logoUrl
     const companyName = formatDetails?.companyName || settings.companyName
+    const companyGST = formatDetails?.companyGst || settings.companyGst
     const companyAddress = formatDetails?.companyAddress || settings.companyAddress
     const companyPhone = formatDetails?.companyPhone || settings.companyPhone
     const companyEmail = formatDetails?.companyEmail || settings.companyEmail
@@ -64,6 +65,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
         ${companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${companyAddress}</p>` : ''}
         ${companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${companyPhone}</p>` : ''}
         ${companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${companyEmail}</p>` : ''}
+        ${companyGST ? `<p style="font-size: 10px; margin: 3px 0;">GST: ${companyGST}</p>` : ''}
         <p style="margin-top: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
       </div>
     `
@@ -177,7 +179,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
           </p>
         )}
       </div>
-      <div ref={printRef} className="rounded-lg border border-slate-200 bg-white p-6">
+      <div ref={printRef} className="rounded-lg border border-slate-200 bg-white p-6 text-stone-600">
         <div className="header">
           <h1>{type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>
           <p>#{order.id.slice(-6)}</p>
@@ -214,16 +216,16 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
                 <td className="text-right">
                   {('unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0).toLocaleString(undefined, {
                     style: 'currency',
-                    currency: 'USD',
+                    currency: 'INR',
                   })}
                 </td>
                 {type === 'sales' && 'discount' in item && (
                   <td className="text-right">
-                    {item.discount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                    {item.discount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                   </td>
                 )}
                 <td className="text-right">
-                  {item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                  {item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                 </td>
               </tr>
             ))}
@@ -233,23 +235,23 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
         <div className="totals">
           <div className="totals-row">
             <span>Subtotal:</span>
-            <span>{orderSubtotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
+            <span>{orderSubtotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
           </div>
           {orderDiscount > 0 && (
             <div className="totals-row">
               <span>Discount:</span>
-              <span>-{orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
+              <span>-{orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
             </div>
           )}
           {orderTax > 0 && (
             <div className="totals-row">
-              <span>Tax:</span>
-              <span>{orderTax.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
+              <span>GST:</span>
+              <span>{orderTax.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
             </div>
           )}
           <div className="totals-row total">
             <span>Total:</span>
-            <span>{orderTotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}</span>
+            <span>{orderTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
           </div>
         </div>
 

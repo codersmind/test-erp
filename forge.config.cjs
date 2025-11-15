@@ -3,12 +3,16 @@ const { VitePlugin } = require('@electron-forge/plugin-vite')
 module.exports = {
   packagerConfig: {
     executableName: 'bookstore-erp',
+    asar: true,
+    extraResource: [
+      './src/splash',
+    ]
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {name: 'bookstore_erp'},
     },
     {
       name: '@electron-forge/maker-zip',
@@ -42,6 +46,9 @@ module.exports = {
         },
       ],
     }),
+  ],
+  publishers: [
+    { name: '@electron-forge/publisher-github', config: { repository: 'https://github.com/YOUR_USERNAME/YOUR_REPO' } },  // GitHub Releases
   ],
 }
 

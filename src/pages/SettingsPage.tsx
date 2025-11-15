@@ -87,6 +87,7 @@ export const SettingsPage = () => {
     fontSize: 'medium',
     showLogo: false,
     companyName: '',
+    companyGst: '',
     companyAddress: '',
     companyPhone: '',
     companyEmail: '',
@@ -101,6 +102,7 @@ export const SettingsPage = () => {
     fontSize: 'medium',
     showLogo: false,
     companyName: '',
+    companyGst: '',
     companyAddress: '',
     companyPhone: '',
     companyEmail: '',
@@ -1099,24 +1101,43 @@ export const SettingsPage = () => {
 
           <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
             <h3 className="text-sm font-semibold">Company Information (Optional)</h3>
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Company Name</label>
-              <input
-                type="text"
-                value={printSettings.companyName || ''}
-                onChange={async (e) => {
-                  const newSettings = { ...printSettings, companyName: e.target.value }
-                  setPrintSettingsState(newSettings)
-                  setIsSavingPrint(true)
-                  try {
-                    await setPrintSettings(newSettings)
-                  } finally {
-                    setIsSavingPrint(false)
-                  }
-                }}
-                placeholder="Your Company Name"
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Company Name</label>
+                <input
+                  type="text"
+                  value={printSettings.companyName || ''}
+                  onChange={async (e) => {
+                    const newSettings = { ...printSettings, companyName: e.target.value }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }}
+                  placeholder="Your Company Name"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+              {/* GST NO */}
+               <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">GST NO</label>
+                <input
+                    type="text"
+                    value={printSettings.companyGst ?? ''}
+                    onChange={async (e) => {
+                      const newSettings = { ...printSettings, companyGst: e.target.value }
+                      setPrintSettingsState(newSettings)
+                      setIsSavingPrint(true)
+                      try { await setPrintSettings(newSettings) }
+                      finally { setIsSavingPrint(false) }
+                    }}
+                    placeholder="e.g. 27AAACC1234C1Z5"
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Address</label>
@@ -1332,6 +1353,7 @@ export const SettingsPage = () => {
                         fontSize: 'medium',
                         showLogo: false,
                         companyName: '',
+                        companyGst: '',
                         companyAddress: '',
                         companyPhone: '',
                         companyEmail: '',
@@ -1360,6 +1382,7 @@ export const SettingsPage = () => {
                         fontSize: 'medium',
                         showLogo: false,
                         companyName: '',
+                        companyGst: '',
                         companyAddress: '',
                         companyPhone: '',
                         companyEmail: '',
@@ -1428,6 +1451,7 @@ export const SettingsPage = () => {
                             showLogo: format.showLogo,
                             logoUrl: format.logoUrl,
                             companyName: format.companyName || '',
+                            companyGst: format.companyGst || '',
                             companyAddress: format.companyAddress || '',
                             companyPhone: format.companyPhone || '',
                             companyEmail: format.companyEmail || '',
