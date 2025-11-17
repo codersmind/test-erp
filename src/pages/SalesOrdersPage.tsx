@@ -9,6 +9,7 @@ import { InvoicePrint } from '../components/InvoicePrint'
 import type { SalesOrder, SalesOrderItem } from '../db/schema'
 import { CustomerQuickCreateModal } from '../components/CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
+import { SalesOrderPrintModal } from '../components/SalesOrderPrintModal'
 import { LazyProductPicker } from '../components/LazyProductPicker'
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
@@ -107,6 +108,9 @@ export const SalesOrdersPage = () => {
   })
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
+  const [newlyCreatedOrder, setNewlyCreatedOrder] = useState<SalesOrder | null>(null)
+  const [newlyCreatedItems, setNewlyCreatedItems] = useState<SalesOrderItem[]>([])
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const isSearchingRef = useRef<Record<number, boolean>>({})
   const originalProductIdRef = useRef<Record<number, string>>({})
@@ -289,7 +293,7 @@ export const SalesOrdersPage = () => {
     const validItems = form.lineItems.filter((item) => item.productId && item.quantity > 0 && item.unitPrice > 0)
     if (validItems.length === 0) return
 
-    await createSalesOrderMutation.mutateAsync({
+    const result = await createSalesOrderMutation.mutateAsync({
       customerId: form.customerId,
       items: validItems.map((item) => ({
         productId: item.productId,
@@ -310,6 +314,12 @@ export const SalesOrdersPage = () => {
       discountType: form.orderDiscountType,
       notes: 'Captured offline',
     })
+    
+    // Show print modal with the newly created order
+    setNewlyCreatedOrder(result.salesOrder)
+    setNewlyCreatedItems(result.items)
+    setShowPrintModal(true)
+    
     const defaultTax = await getTaxSettings()
     setForm({
       customerId: '',
@@ -870,6 +880,16 @@ export const SalesOrdersPage = () => {
           setSelectedProductIndex(null)
         }}
         onProductCreated={handleProductCreated}
+      />
+      <SalesOrderPrintModal
+        isOpen={showPrintModal}
+        onClose={() => {
+          setShowPrintModal(false)
+          setNewlyCreatedOrder(null)
+          setNewlyCreatedItems([])
+        }}
+        order={newlyCreatedOrder}
+        items={newlyCreatedItems}
       />
     </div>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
 import type { SalesOrder, SalesOrderItem, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 import { getPrintSettings, getPrintStyles, type PrintPaperSize, type CustomPrintFormat } from '../utils/printSettings'
 
@@ -8,9 +8,15 @@ interface InvoicePrintProps {
   customerName?: string
   supplierName?: string
   type: 'sales' | 'purchase'
+  hideControls?: boolean
 }
 
-export const InvoicePrint = ({ order, items, customerName, supplierName, type }: InvoicePrintProps) => {
+export interface InvoicePrintRef {
+  print: () => void
+}
+
+export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
+  ({ order, items, customerName, supplierName, type, hideControls = false }, ref) => {
   const printRef = useRef<HTMLDivElement>(null)
   const [printSettings, setPrintSettings] = useState<Awaited<ReturnType<typeof getPrintSettings>> | null>(null)
   const [selectedPaperSize, setSelectedPaperSize] = useState<PrintPaperSize>('a4')
@@ -94,6 +100,10 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
     }, 250)
   }
 
+  useImperativeHandle(ref, () => ({
+    print: handlePrint,
+  }))
+
   const orderDate = new Date(order.issuedDate || order.createdAt).toLocaleDateString()
   const orderTotal = 'total' in order ? order.total : 0
   const orderSubtotal = 'subtotal' in order ? order.subtotal : 0
@@ -105,6 +115,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
 
   return (
     <>
+      {!hideControls && (
       <div className="no-print mb-4 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Paper Size:</label>
@@ -182,6 +193,7 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
           </p>
         )}
       </div>
+      )}
       <div ref={printRef} className="rounded-lg border border-slate-200 bg-white p-6 text-stone-600">
         <div className="header">
           <h1>{type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>
@@ -246,15 +258,15 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
               <span>-{orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
             </div>
           )}
-          {orderTax > 0 && orderTaxType === 'cgst_sgst' && orderCgst !== undefined && orderSgst !== undefined ? (
+          {orderTax > 0 && orderTaxType === 'cgst_sgst' && orderCgst !== undefined && orderSgst !== undefined && orderCgst !== null && orderSgst !== null ? (
             <>
               <div className="totals-row">
                 <span>CGST:</span>
-                <span>{orderCgst.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
+                <span>{Number(orderCgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
               </div>
               <div className="totals-row">
                 <span>SGST:</span>
-                <span>{orderSgst.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
+                <span>{Number(orderSgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
               </div>
             </>
           ) : orderTax > 0 ? (
@@ -275,5 +287,5 @@ export const InvoicePrint = ({ order, items, customerName, supplierName, type }:
       </div>
     </>
   )
-}
+})
 
