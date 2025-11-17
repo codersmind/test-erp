@@ -4,9 +4,10 @@ import { ManualSyncButton } from '../components/ManualSyncButton'
 import { SyncStatus } from '../components/SyncStatus'
 import { ThemeToggleButton } from '../components/ThemeToggleButton'
 import { SettingsInitializer } from '../components/SettingsInitializer'
+import { UpdateStatus } from '../components/UpdateStatus'
 import { useAuth } from '../auth/AuthProvider'
 import { BackgroundSyncManager } from '../sync/BackgroundSyncManager'
-import { getDesiredFolderName } from '../sync/googleDriveClient'
+// import { getDesiredFolderName } from '../sync/googleDriveClient'
 
 const navigation = [
   { to: '/', label: 'Dashboard' },
@@ -217,6 +218,7 @@ export const AppLayout = () => {
           </div>
         </main>
       </div>
+      <UpdateStatus />
     </div>
   )
 }

@@ -1,14 +1,21 @@
-import path from 'path';
-
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const { join } = require('node:path')
-// const {autoUpdater} = require('electron-updater')
+
+// Conditionally require electron-updater (only available in packaged app)
+let autoUpdater: any = null
+try {
+  autoUpdater = require('electron-updater').autoUpdater
+} catch (error) {
+  console.warn('electron-updater not available:', error)
+}
 
 // === Environment Variables ===
 const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
 // const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
 const MAIN_WINDOW_VITE_NAME = process.env.MAIN_WINDOW_VITE_NAME || 'main_window'
 const MAIN_WINDOW_PRELOAD_VITE_ENTRY = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY
+
+let mainWindow: any = null
 
 const createWindow = async () => {
 
@@ -26,7 +33,7 @@ const createWindow = async () => {
   
   splash.center();
 
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     resizable: true,
@@ -58,7 +65,22 @@ const createWindow = async () => {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  
+  // Initialize auto-updater after window is ready (only in production)
+  if (app.isPackaged && autoUpdater) {
+    // Small delay to ensure window is fully loaded
+    setTimeout(() => {
+      autoUpdater.checkForUpdatesAndNotify()
+      
+      // Check for updates every 4 hours
+      setInterval(() => {
+        autoUpdater.checkForUpdatesAndNotify()
+      }, 4 * 60 * 60 * 1000)
+    }, 3000)
+  }
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -103,5 +125,123 @@ ipcMain.handle('secure-storage:clear', async (_:any, scope: string) => {
   const instance = getKeytar()
   if (!instance) return
   await instance.deletePassword(SERVICE_NAME, scope)
+})
+
+// === Auto Updater Configuration ===
+// Only enable auto-updater in production (not in dev mode)
+if (app.isPackaged && autoUpdater) {
+  autoUpdater.setAutoDownload(false)
+  autoUpdater.setAutoInstallOnAppQuit(true)
+  
+  // Configure for GitHub Releases
+  // The repository will be automatically detected from package.json or forge.config.cjs
+  // Make sure your GitHub repository is set in forge.config.cjs publishers section
+} else {
+  console.log('Auto-updater disabled (dev mode or module not available)')
+}
+
+// === Auto Updater Event Handlers ===
+if (autoUpdater) {
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for update...')
+    if (mainWindow) {
+      mainWindow.webContents.send('update:checking')
+    }
+  })
+
+  autoUpdater.on('update-available', (info: any) => {
+    console.log('Update available:', info.version)
+    if (mainWindow) {
+      mainWindow.webContents.send('update:available', {
+        version: info.version,
+        releaseDate: info.releaseDate,
+        releaseNotes: info.releaseNotes,
+      })
+    }
+    
+    // Automatically download the update
+    autoUpdater.downloadUpdate()
+  })
+
+  autoUpdater.on('update-not-available', (info: any) => {
+    console.log('Update not available. Current version is latest.')
+    if (mainWindow) {
+      mainWindow.webContents.send('update:not-available', {
+        version: info.version,
+      })
+    }
+  })
+
+  autoUpdater.on('error', (err: any) => {
+    console.error('Error in auto-updater:', err)
+    if (mainWindow) {
+      mainWindow.webContents.send('update:error', {
+        message: err.message,
+      })
+    }
+  })
+
+  autoUpdater.on('download-progress', (progressObj: any) => {
+    const percent = Math.round(progressObj.percent || 0)
+    console.log(`Download progress: ${percent}%`)
+    if (mainWindow) {
+      mainWindow.webContents.send('update:download-progress', {
+        percent,
+        transferred: progressObj.transferred,
+        total: progressObj.total,
+      })
+    }
+  })
+
+  autoUpdater.on('update-downloaded', (info: any) => {
+    console.log('Update downloaded:', info.version)
+    if (mainWindow) {
+      mainWindow.webContents.send('update:downloaded', {
+        version: info.version,
+        releaseDate: info.releaseDate,
+        releaseNotes: info.releaseNotes,
+      })
+      
+      // Show restart dialog
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: 'Update downloaded successfully!',
+        detail: `Version ${info.version} has been downloaded. The application will restart to apply the update.`,
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then((result: any) => {
+        if (result.response === 0) {
+          // User clicked "Restart Now"
+          autoUpdater.quitAndInstall(false, true)
+        }
+      })
+    }
+  })
+}
+
+// === IPC Handlers for Update Control ===
+ipcMain.handle('update:check', async () => {
+  if (!autoUpdater) {
+    return { success: false, error: 'Auto-updater not available' }
+  }
+  try {
+    await autoUpdater.checkForUpdates()
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('update:restart', async () => {
+  if (!autoUpdater) {
+    return
+  }
+  autoUpdater.quitAndInstall(false, true)
+})
+
+ipcMain.handle('update:get-version', async () => {
+  return app.getVersion()
 })
 

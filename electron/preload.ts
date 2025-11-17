@@ -14,3 +14,40 @@ contextBridge.exposeInMainWorld('electronSecureStorage', {
   },
 })
 
+// Auto-updater API
+contextBridge.exposeInMainWorld('electronUpdater', {
+  async checkForUpdates() {
+    return ipcRenderer.invoke('update:check')
+  },
+  async restartApp() {
+    return ipcRenderer.invoke('update:restart')
+  },
+  async getVersion() {
+    return ipcRenderer.invoke('update:get-version')
+  },
+  onUpdateChecking(callback: () => void) {
+    ipcRenderer.on('update:checking', callback)
+    return () => ipcRenderer.removeAllListeners('update:checking')
+  },
+  onUpdateAvailable(callback: (info: { version: string; releaseDate: string; releaseNotes?: string }) => void) {
+    ipcRenderer.on('update:available', (_event: any, info: { version: string; releaseDate: string; releaseNotes?: string }) => callback(info))
+    return () => ipcRenderer.removeAllListeners('update:available')
+  },
+  onUpdateNotAvailable(callback: (info: { version: string }) => void) {
+    ipcRenderer.on('update:not-available', (_event: any, info: { version: string }) => callback(info))
+    return () => ipcRenderer.removeAllListeners('update:not-available')
+  },
+  onUpdateError(callback: (error: { message: string }) => void) {
+    ipcRenderer.on('update:error', (_event: any, error: { message: string }) => callback(error))
+    return () => ipcRenderer.removeAllListeners('update:error')
+  },
+  onDownloadProgress(callback: (progress: { percent: number; transferred: number; total: number }) => void) {
+    ipcRenderer.on('update:download-progress', (_event: any, progress: { percent: number; transferred: number; total: number }) => callback(progress))
+    return () => ipcRenderer.removeAllListeners('update:download-progress')
+  },
+  onUpdateDownloaded(callback: (info: { version: string; releaseDate: string; releaseNotes?: string }) => void) {
+    ipcRenderer.on('update:downloaded', (_event: any, info: { version: string; releaseDate: string; releaseNotes?: string }) => callback(info))
+    return () => ipcRenderer.removeAllListeners('update:downloaded')
+  },
+})
+
