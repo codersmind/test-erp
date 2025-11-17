@@ -71,6 +71,7 @@ export const salesOrderSchema = yup.object({
     .min(0, 'Paid amount must be greater than or equal to 0')
     .typeError('Paid amount must be a number')
     .default(0),
+  roundFigure: yup.boolean().default(false),
   lineItems: yup.array().of(
     yup.object({
       productId: yup.string(),
@@ -96,6 +97,7 @@ export const purchaseOrderSchema = yup.object({
     .min(0, 'Paid amount must be greater than or equal to 0')
     .typeError('Paid amount must be a number')
     .default(0),
+  roundFigure: yup.boolean().default(false),
   lineItems: yup.array().of(
     yup.object({
       productId: yup.string(),

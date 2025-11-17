@@ -42,6 +42,11 @@ import {
   setPurchaseOrderSettings,
   type PurchaseOrderSettings,
 } from '../utils/purchaseOrderSettings'
+import {
+  getOrderSettings,
+  setOrderSettings,
+  type OrderSettings,
+} from '../utils/orderSettings'
 import { InvoiceTemplateEditor } from '../components/InvoiceTemplateEditor'
 
 type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'purchaseOrder' | 'integration' | 'danger'
@@ -119,7 +124,11 @@ export const SettingsPage = () => {
   const [purchaseOrderSettings, setPurchaseOrderSettingsState] = useState<PurchaseOrderSettings>({
     defaultAddToInventory: true,
   })
+  const [orderSettings, setOrderSettingsState] = useState<OrderSettings>({
+    defaultRoundFigure: false,
+  })
   const [isSavingPurchaseOrder, setIsSavingPurchaseOrder] = useState(false)
+  const [isSavingOrder, setIsSavingOrder] = useState(false)
   const [showTemplateEditor, setShowTemplateEditor] = useState(false)
 
   useEffect(() => {
@@ -130,6 +139,7 @@ export const SettingsPage = () => {
     loadOrderIdSettings()
     loadPrintSettings()
     loadPurchaseOrderSettings()
+    loadOrderSettings()
   }, [])
 
   const loadPrintSettings = async () => {
@@ -140,6 +150,11 @@ export const SettingsPage = () => {
   const loadPurchaseOrderSettings = async () => {
     const settings = await getPurchaseOrderSettings()
     setPurchaseOrderSettingsState(settings)
+  }
+
+  const loadOrderSettings = async () => {
+    const settings = await getOrderSettings()
+    setOrderSettingsState(settings)
   }
 
   const loadOrderIdSettings = async () => {
@@ -1565,6 +1580,38 @@ export const SettingsPage = () => {
                     </div>
                   </div>
                   {isSavingPurchaseOrder && <p className="mt-2 text-xs text-slate-500">Saving...</p>}
+                </div>
+
+                {/* Order Settings - Round Figure */}
+                <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50 mb-3">Order Settings</h3>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="defaultRoundFigure"
+                      checked={orderSettings.defaultRoundFigure}
+                      onChange={async (e) => {
+                        const newSettings = { ...orderSettings, defaultRoundFigure: e.target.checked }
+                        setOrderSettingsState(newSettings)
+                        setIsSavingOrder(true)
+                        try {
+                          await setOrderSettings(newSettings)
+                        } finally {
+                          setIsSavingOrder(false)
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="defaultRoundFigure" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Default: Round Figure
+                      </label>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        When enabled, the round figure checkbox will be checked by default in sales and purchase order forms. The difference between the original total and rounded total will be added as extra discount.
+                      </p>
+                    </div>
+                  </div>
+                  {isSavingOrder && <p className="mt-2 text-xs text-slate-500">Saving...</p>}
                 </div>
               </div>
             </section>

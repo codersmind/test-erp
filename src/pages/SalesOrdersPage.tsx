@@ -19,6 +19,7 @@ import { getTaxSettings, calculateTax, COMMON_GST_RATES, INDIAN_STATES, type Tax
 import { getProduct, getCustomer } from '../db/localDataService'
 import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { salesOrderSchema, type SalesOrderFormValues } from '../utils/validationSchemas'
+import { getOrderSettings } from '../utils/orderSettings'
 import type { Customer } from '../db/schema'
 
 const PAGE_SIZE = 20
@@ -121,15 +122,17 @@ export const SalesOrdersPage = () => {
   const [newlyCreatedItems, setNewlyCreatedItems] = useState<SalesOrderItem[]>([])
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const [initialTaxSettings, setInitialTaxSettings] = useState<TaxSettings | null>(null)
+  const [defaultRoundFigure, setDefaultRoundFigure] = useState(false)
   const isSearchingRef = useRef<Record<number, boolean>>({})
   const originalProductIdRef = useRef<Record<number, string>>({})
   const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void } | null>(null)
   const createSalesOrderMutation = useCreateSalesOrder()
 
-  // Load tax settings on mount
+  // Load tax settings and order settings on mount
   useEffect(() => {
-    getTaxSettings().then((settings) => {
-      setInitialTaxSettings(settings)
+    Promise.all([getTaxSettings(), getOrderSettings()]).then(([taxSettings, orderSettings]) => {
+      setInitialTaxSettings(taxSettings)
+      setDefaultRoundFigure(orderSettings.defaultRoundFigure)
     })
   }, [])
 
@@ -168,6 +171,7 @@ export const SalesOrdersPage = () => {
       orderDiscountType: 'amount',
       isPaid: false,
       paidAmount: 0,
+      roundFigure: defaultRoundFigure,
     }
   }
 
@@ -214,7 +218,19 @@ export const SalesOrdersPage = () => {
               stateRates: values.stateRates || {},
             }
             const taxCalculation = calculateTax(subtotalAfterDiscount, taxSettingsForCalc, values.selectedState || undefined)
-            const totalAmount = subtotalAfterDiscount + taxCalculation.tax
+            let totalAmount = subtotalAfterDiscount + taxCalculation.tax
+            
+            // Apply round figure if checked
+            let finalDiscount = values.orderDiscount || 0
+            if (values.roundFigure) {
+              const roundedTotal = Math.round(totalAmount)
+              const roundDifference = totalAmount - roundedTotal
+              if (roundDifference > 0) {
+                // Add the difference as extra discount
+                finalDiscount = (values.orderDiscount || 0) + roundDifference
+                totalAmount = roundedTotal
+              }
+            }
 
             const result = await createSalesOrderMutation.mutateAsync({
               customerId: values.customerId,
@@ -233,7 +249,7 @@ export const SalesOrdersPage = () => {
                 defaultState: values.defaultState ?? undefined,
                 stateRates: values.stateRates || {},
               },
-              discount: values.orderDiscount || 0,
+              discount: finalDiscount,
               discountType: values.orderDiscountType,
               paidAmount: values.isPaid ? totalAmount : (values.paidAmount || 0),
               notes: 'Captured offline',
@@ -261,6 +277,7 @@ export const SalesOrdersPage = () => {
                 orderDiscountType: 'amount',
                 isPaid: false,
                 paidAmount: 0,
+                roundFigure: defaultRoundFigure,
               },
             })
           }}
@@ -364,7 +381,19 @@ export const SalesOrdersPage = () => {
               return calculateTax(subtotalAfterDiscount, taxSettingsForCalc, values.selectedState || undefined)
             }, [subtotalAfterDiscount, values])
 
-            const totalAmount = subtotalAfterDiscount + taxCalculation.tax
+            let totalAmount = subtotalAfterDiscount + taxCalculation.tax
+            let roundDifference = 0
+            
+            // Apply round figure if checked
+            if (values.roundFigure) {
+              const roundedTotal = Math.round(totalAmount)
+              roundDifference = totalAmount - roundedTotal
+              if (roundDifference > 0) {
+                totalAmount = roundedTotal
+              } else {
+                roundDifference = 0
+              }
+            }
 
             return (
               <form onSubmit={handleSubmit} className="mt-4 space-y-4">
@@ -733,6 +762,30 @@ export const SalesOrdersPage = () => {
                           {taxCalculation.sgst?.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) ?? '$0.00'}
                         </span>
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Round Figure */}
+                <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="roundFigure"
+                      checked={values.roundFigure}
+                      onChange={(e) => setFieldValue('roundFigure', e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-600 dark:bg-slate-800"
+                    />
+                    <label htmlFor="roundFigure" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Round Figure
+                    </label>
+                  </div>
+                  {values.roundFigure && roundDifference > 0 && (
+                    <div className="mt-2 flex items-center justify-between text-sm">
+                      <span className="text-slate-600 dark:text-slate-400">Round adjustment (extra discount)</span>
+                      <span className="font-medium text-red-600 dark:text-red-400">
+                        -{roundDifference.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                      </span>
                     </div>
                   )}
                 </div>

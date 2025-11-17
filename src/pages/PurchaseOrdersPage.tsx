@@ -14,6 +14,7 @@ import { db } from '../db/database'
 import { getProduct, getCustomer } from '../db/localDataService'
 import { getPurchaseOrderSettings } from '../utils/purchaseOrderSettings'
 import { purchaseOrderSchema, type PurchaseOrderFormValues } from '../utils/validationSchemas'
+import { getOrderSettings } from '../utils/orderSettings'
 import type { PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 
 const PAGE_SIZE = 20
@@ -107,6 +108,7 @@ export const PurchaseOrdersPage = () => {
   const [filters, setFilters] = useState<{ supplierName?: string; startDate?: string; endDate?: string }>({})
   const { data: paginatedData, isPending } = usePurchaseOrdersPaginated(page, PAGE_SIZE, filters)
   const [defaultAddToInventory, setDefaultAddToInventory] = useState(true)
+  const [defaultRoundFigure, setDefaultRoundFigure] = useState(false)
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
@@ -115,8 +117,12 @@ export const PurchaseOrdersPage = () => {
 
   useEffect(() => {
     const loadSettings = async () => {
-      const settings = await getPurchaseOrderSettings()
-      setDefaultAddToInventory(settings.defaultAddToInventory)
+      const [purchaseSettings, orderSettings] = await Promise.all([
+        getPurchaseOrderSettings(),
+        getOrderSettings(),
+      ])
+      setDefaultAddToInventory(purchaseSettings.defaultAddToInventory)
+      setDefaultRoundFigure(orderSettings.defaultRoundFigure)
     }
     loadSettings()
   }, [])
@@ -127,10 +133,11 @@ export const PurchaseOrdersPage = () => {
 
   const initialValues: PurchaseOrderFormValues = {
     supplierId: '',
-          lineItems: [{ productId: '', quantity: 1, unitCost: 0 }],
+    lineItems: [{ productId: '', quantity: 1, unitCost: 0 }],
     addToInventory: defaultAddToInventory,
     isPaid: false,
     paidAmount: 0,
+    roundFigure: defaultRoundFigure,
   }
 
 
@@ -149,35 +156,41 @@ export const PurchaseOrdersPage = () => {
     }
 
             const lineItems = values.lineItems || []
-            const totalAmount = lineItems.reduce((sum, item) => {
+            let totalAmount = lineItems.reduce((sum, item) => {
               if (item.productId && item.quantity > 0 && item.unitCost > 0) {
                 return sum + item.quantity * item.unitCost
               }
               return sum
             }, 0)
 
+            // Apply round figure if checked
+            if (values.roundFigure) {
+              const roundedTotal = Math.round(totalAmount)
+              totalAmount = roundedTotal
+            }
+
             if (lineItems.some((item) => !item.productId || item.quantity <= 0 || item.unitCost <= 0)) {
-      alert('Please ensure all line items have a selected product, valid quantity, and unit cost.')
-      return
-    }
+              alert('Please ensure all line items have a selected product, valid quantity, and unit cost.')
+              return
+            }
 
             const supplier = await getCustomer(values.supplierId)
-    if (!supplier) {
-      alert('Selected supplier not found.')
-      return
-    }
+            if (!supplier) {
+              alert('Selected supplier not found.')
+              return
+            }
 
-    await createPurchaseOrderMutation.mutateAsync({
-      supplierName: supplier.name,
+            await createPurchaseOrderMutation.mutateAsync({
+              supplierName: supplier.name,
               items: lineItems
                 .filter((item): item is { productId: string; quantity: number; unitCost: number } => !!item.productId)
                 .map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitCost: item.unitCost,
-        lineTotal: item.quantity * item.unitCost,
-      })),
-      notes: 'Captured offline',
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  unitCost: item.unitCost,
+                  lineTotal: item.quantity * item.unitCost,
+                })),
+              notes: 'Captured offline',
               addToInventory: values.addToInventory,
               paidAmount: values.isPaid ? totalAmount : (values.paidAmount || 0),
             })
@@ -189,6 +202,7 @@ export const PurchaseOrdersPage = () => {
                 addToInventory: defaultAddToInventory,
                 isPaid: false,
                 paidAmount: 0,
+                roundFigure: defaultRoundFigure,
               },
             })
           }}
@@ -198,12 +212,24 @@ export const PurchaseOrdersPage = () => {
             formikRef.current = { setFieldValue }
 
             const lineItems = values.lineItems || []
-            const totalAmount = lineItems.reduce((sum, item) => {
-    if (item.productId && item.quantity > 0 && item.unitCost > 0) {
-      return sum + item.quantity * item.unitCost
-    }
-    return sum
-  }, 0)
+            let totalAmount = lineItems.reduce((sum, item) => {
+              if (item.productId && item.quantity > 0 && item.unitCost > 0) {
+                return sum + item.quantity * item.unitCost
+              }
+              return sum
+            }, 0)
+            
+            let roundDifference = 0
+            // Apply round figure if checked
+            if (values.roundFigure) {
+              const roundedTotal = Math.round(totalAmount)
+              roundDifference = totalAmount - roundedTotal
+              if (roundDifference > 0) {
+                totalAmount = roundedTotal
+              } else {
+                roundDifference = 0
+              }
+            }
 
   return (
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
@@ -342,6 +368,30 @@ export const PurchaseOrdersPage = () => {
                 : 'Items will be recorded in purchase order only, without updating product stock.'}
             </p>
                   <div className="space-y-3">
+                    {/* Round Figure */}
+                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="roundFigure"
+                          checked={values.roundFigure}
+                          onChange={(e) => setFieldValue('roundFigure', e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-600 dark:bg-slate-800"
+                        />
+                        <label htmlFor="roundFigure" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Round Figure
+                        </label>
+                      </div>
+                      {values.roundFigure && roundDifference > 0 && (
+                        <div className="mt-2 flex items-center justify-between text-sm">
+                          <span className="text-slate-600 dark:text-slate-400">Round adjustment (extra discount)</span>
+                          <span className="font-medium text-red-600 dark:text-red-400">
+                            -{roundDifference.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
                       <span className="text-base font-semibold text-slate-900 dark:text-slate-50">Total</span>
                       <span className="text-lg font-bold text-slate-900 dark:text-slate-50">
