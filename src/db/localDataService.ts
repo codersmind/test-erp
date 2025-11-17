@@ -882,6 +882,97 @@ export const getSupplierSummary = async (supplierName: string) => {
   }
 }
 
+export const getLowStockProducts = async () => {
+  const products = await db.products.filter((product) => !product.isArchived).toArray()
+  return products.filter((product) => {
+    if (!product.reorderLevel) return false
+    return product.stockOnHand <= product.reorderLevel
+  })
+}
+
+export const getEarningsByDateRange = async (startDate: string, endDate: string, groupBy: 'day' | 'month' | 'year' = 'day') => {
+  const orders = await db.salesOrders
+    .filter((order) => {
+      const orderDate = new Date(order.issuedDate)
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      end.setHours(23, 59, 59, 999)
+      return orderDate >= start && orderDate <= end && order.status !== 'cancelled' && order.status !== 'refund'
+    })
+    .toArray()
+
+  const totalEarnings = orders.reduce((sum, order) => sum + order.total, 0)
+  const totalPaid = orders.reduce((sum, order) => sum + (order.paidAmount || 0), 0)
+  const totalDue = totalEarnings - totalPaid
+  const totalOrders = orders.length
+
+  // Group by date/month/year for chart data
+  const earningsByPeriod: Record<string, number> = {}
+  orders.forEach((order) => {
+    const orderDate = new Date(order.issuedDate)
+    let periodKey: string
+
+    if (groupBy === 'month') {
+      periodKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
+    } else if (groupBy === 'year') {
+      periodKey = String(orderDate.getFullYear())
+    } else {
+      periodKey = order.issuedDate.split('T')[0] // Get date part only
+    }
+
+    earningsByPeriod[periodKey] = (earningsByPeriod[periodKey] || 0) + order.total
+  })
+
+  const chartData = Object.entries(earningsByPeriod)
+    .map(([period, amount]) => ({ date: period, amount }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  return {
+    totalEarnings,
+    totalPaid,
+    totalDue,
+    totalOrders,
+    chartData,
+  }
+}
+
+export const getTotalCustomerDueAmount = async () => {
+  const orders = await db.salesOrders
+    .filter((order) => order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'refund')
+    .toArray()
+
+  const totalDue = orders.reduce((sum, order) => {
+    const dueAmount = order.total - (order.paidAmount || 0)
+    return sum + Math.max(0, dueAmount)
+  }, 0)
+
+  // Get customers with due amounts
+  const customerDues: Record<string, number> = {}
+  orders.forEach((order) => {
+    const dueAmount = order.total - (order.paidAmount || 0)
+    if (dueAmount > 0) {
+      customerDues[order.customerId] = (customerDues[order.customerId] || 0) + dueAmount
+    }
+  })
+
+  const customerDueList = await Promise.all(
+    Object.entries(customerDues).map(async ([customerId, amount]) => {
+      const customer = await db.customers.get(customerId)
+      return {
+        customerId,
+        customerName: customer?.name || 'Unknown',
+        dueAmount: amount,
+      }
+    }),
+  )
+
+  return {
+    totalDue,
+    customerCount: customerDueList.length,
+    customerDueList: customerDueList.sort((a, b) => b.dueAmount - a.dueAmount),
+  }
+}
+
 export const enqueueManualSyncMarker = async () => {
   await enqueueChange('customer', nanoid(), 'update', { synthetic: true })
 }
