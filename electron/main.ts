@@ -245,3 +245,107 @@ ipcMain.handle('update:get-version', async () => {
   return app.getVersion()
 })
 
+// === Printer IPC Handlers ===
+ipcMain.handle('printer:get-printers', async () => {
+  try {
+    if (!mainWindow) {
+      return { success: false, error: 'Main window not available' }
+    }
+    const printers = await mainWindow.webContents.getPrintersAsync()
+    return {
+      success: true,
+      printers: printers.map((printer: any) => ({
+        name: printer.name,
+        displayName: printer.displayName || printer.name,
+        description: printer.description || printer.name,
+        status: printer.status,
+        isDefault: printer.isDefault || false,
+      })),
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('printer:print', async (_: any, options: { html: string; printerName?: string; silent?: boolean }) => {
+  try {
+    if (!mainWindow) {
+      return { success: false, error: 'Main window not available' }
+    }
+
+    const { html, printerName, silent = false } = options
+
+    // Create a hidden window for printing
+    const printWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    })
+
+    // Load HTML content
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+
+    // Wait for content to load
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    // Print options
+    const printOptions: any = {
+      silent,
+      printBackground: true,
+      deviceName: printerName || undefined,
+    }
+
+    // Print
+    const success = await printWindow.webContents.print(printOptions)
+
+    // Close the print window
+    printWindow.close()
+
+    return { success: !!success }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('printer:show-dialog', async () => {
+  try {
+    if (!mainWindow) {
+      return { success: false, error: 'Main window not available' }
+    }
+
+    const printers = await mainWindow.webContents.getPrintersAsync()
+    
+    if (printers.length === 0) {
+      return { success: false, error: 'No printers available' }
+    }
+
+    // Show dialog to select printer
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: 'Select Printer',
+      message: 'Choose a printer:',
+      buttons: printers.map((p: any) => p.displayName || p.name),
+      defaultId: printers.findIndex((p: any) => p.isDefault) || 0,
+      cancelId: -1,
+    })
+
+    if (result.response >= 0 && result.response < printers.length) {
+      const selectedPrinter = printers[result.response]
+      return {
+        success: true,
+        printer: {
+          name: selectedPrinter.name,
+          displayName: selectedPrinter.displayName || selectedPrinter.name,
+          description: selectedPrinter.description || selectedPrinter.name,
+        },
+      }
+    }
+
+    return { success: false, error: 'No printer selected' }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
