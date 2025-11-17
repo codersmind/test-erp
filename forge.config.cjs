@@ -3,6 +3,12 @@ const { VitePlugin } = require('@electron-forge/plugin-vite')
 module.exports = {
   packagerConfig: {
     executableName: 'bookstore-erp',
+    // App icon configuration
+    // Place your icon files in assets/icons/ directory:
+    // - icon.ico (Windows - 256x256 recommended, can contain multiple sizes)
+    // - icon.icns (macOS - 512x512 recommended)
+    // - icon.png (Linux - 512x512 recommended)
+    icon: './assets/icons/icon', // Path without extension, Electron will auto-detect .ico, .icns, .png
     // Ensure electron-updater and its dependencies are included and unpacked from ASAR
     asar: {
       unpack: '*.{node,dll}',
@@ -13,7 +19,11 @@ module.exports = {
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {name: 'bookstore_erp'},
+      config: {
+        name: 'bookstore_erp',
+        // Icon for Windows installer
+        setupIcon: './assets/icons/icon.ico',
+      },
     },
     {
       name: '@electron-forge/maker-zip',
@@ -21,11 +31,21 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-deb',
-      config: {},
+      config: {
+        // Icon for Debian/Ubuntu packages
+        options: {
+          icon: './assets/icons/icon.png',
+        },
+      },
     },
     {
       name: '@electron-forge/maker-rpm',
-      config: {},
+      config: {
+        // Icon for RPM packages (Fedora, CentOS, etc.)
+        options: {
+          icon: './assets/icons/icon.png',
+        },
+      },
     },
   ],
   plugins: [
