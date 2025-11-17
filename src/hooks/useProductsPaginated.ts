@@ -11,10 +11,19 @@ export interface PaginatedProductsResult {
   totalPages: number
 }
 
-export const useProductsPaginated = (page: number, pageSize: number, searchQuery?: string) =>
+export type ProductSortField = 'title' | 'stockOnHand' | 'salePrice' | 'mrp' | 'createdAt'
+export type SortOrder = 'asc' | 'desc'
+
+export const useProductsPaginated = (
+  page: number,
+  pageSize: number,
+  searchQuery?: string,
+  sortBy?: ProductSortField,
+  sortOrder?: SortOrder,
+) =>
   useQuery<PaginatedProductsResult>({
-    queryKey: ['products', 'paginated', page, pageSize, searchQuery],
-    queryFn: () => listProductsPaginated(page, pageSize, searchQuery),
+    queryKey: ['products', 'paginated', page, pageSize, searchQuery, sortBy, sortOrder],
+    queryFn: () => listProductsPaginated(page, pageSize, searchQuery, sortBy, sortOrder),
     placeholderData: keepPreviousData,
   })
 

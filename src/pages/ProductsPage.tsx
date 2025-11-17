@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Formik } from 'formik'
 
 import { useAdjustProductStock, useCreateProduct } from '../hooks/useProducts'
-import { useProductsPaginated } from '../hooks/useProductsPaginated'
+import { useProductsPaginated, type ProductSortField, type SortOrder } from '../hooks/useProductsPaginated'
 import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { ProductEditModal } from '../components/ProductEditModal'
 import { Pagination } from '../components/Pagination'
@@ -23,7 +23,9 @@ const PAGE_SIZE = 20
 export const ProductsPage = () => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
-  const { data: paginatedData, isPending } = useProductsPaginated(page, PAGE_SIZE, searchQuery)
+  const [sortBy, setSortBy] = useState<ProductSortField>('title')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+  const { data: paginatedData, isPending } = useProductsPaginated(page, PAGE_SIZE, searchQuery, sortBy, sortOrder)
   const createProduct = useCreateProduct()
   const adjustStock = useAdjustProductStock()
   const [units, setUnits] = useState<Unit[]>([])
@@ -55,6 +57,44 @@ export const ProductsPage = () => {
   const handleSearchChange = (query: string) => {
     setSearchQuery(query)
     setPage(1) // Reset to first page when searching
+  }
+
+  const handleSort = (field: ProductSortField) => {
+    if (sortBy === field) {
+      // If clicking the same field
+      if (sortOrder === 'asc') {
+        // First click: asc -> desc
+        setSortOrder('desc')
+      } else {
+        // Second click: desc -> clear (reset to default)
+        setSortBy('title')
+        setSortOrder('asc')
+      }
+    } else {
+      // Set new sort field with ascending order
+      setSortBy(field)
+      setSortOrder('asc')
+    }
+    setPage(1) // Reset to first page when sorting
+  }
+
+  const SortableHeader = ({ field, children, align = 'left' }: { field: ProductSortField; children: React.ReactNode; align?: 'left' | 'right' }) => {
+    const isActive = sortBy === field
+    return (
+      <th
+        className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'} font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors`}
+        onClick={() => handleSort(field)}
+      >
+        <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+          {children}
+          {isActive && (
+            <span className="text-xs">
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </span>
+          )}
+        </div>
+      </th>
+    )
   }
 
   const products = paginatedData?.items ?? []
@@ -236,20 +276,21 @@ export const ProductsPage = () => {
           <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
             <thead className="bg-slate-100 dark:bg-slate-800/60">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Title</th>
+                <SortableHeader field="title">Title</SortableHeader>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">SKU</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Barcode</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">MRP</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Sale Price</th>
+                <SortableHeader field="mrp" align="right">MRP</SortableHeader>
+                <SortableHeader field="salePrice" align="right">Sale Price</SortableHeader>
                 <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Cost</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Stock</th>
+                <SortableHeader field="stockOnHand" align="right">Stock</SortableHeader>
+                <SortableHeader field="createdAt" align="right">Created</SortableHeader>
                 <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {isPending ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
                     Loading inventory…
                   </td>
                 </tr>
@@ -281,9 +322,9 @@ export const ProductsPage = () => {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right">
-                        {product.cost.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
-                      </td>
+                    <td className="px-3 py-3 text-right">
+                      {product.cost.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                    </td>
                     <td className="px-3 py-3 text-right">
                       <span
                         className={
@@ -297,6 +338,9 @@ export const ProductsPage = () => {
                       {product.reorderLevel && product.stockOnHand <= product.reorderLevel && (
                         <span className="ml-1 text-xs text-red-500">⚠ Low</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-slate-500">
+                      {new Date(product.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-2">
@@ -328,7 +372,7 @@ export const ProductsPage = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
                     {searchQuery ? 'No products found.' : 'No products yet.'}
                   </td>
                 </tr>

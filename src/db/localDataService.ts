@@ -190,7 +190,13 @@ export const archiveCustomer = async (id: string) => {
 
 export const listProducts = () => db.products.orderBy('title').filter((product) => !product.isArchived).toArray()
 
-export const listProductsPaginated = async (page: number, pageSize: number, searchQuery?: string) => {
+export const listProductsPaginated = async (
+  page: number,
+  pageSize: number,
+  searchQuery?: string,
+  sortBy?: 'title' | 'stockOnHand' | 'salePrice' | 'mrp' | 'createdAt',
+  sortOrder?: 'asc' | 'desc',
+) => {
   let query = db.products.filter((product) => !product.isArchived)
 
   if (searchQuery?.trim()) {
@@ -205,10 +211,54 @@ export const listProductsPaginated = async (page: number, pageSize: number, sear
   }
 
   const total = await query.count()
-  const items = await query
-    .offset((page - 1) * pageSize)
-    .limit(pageSize)
-    .sortBy('title')
+  
+  // Get all items first for sorting
+  let items = await query.toArray()
+  
+  // Apply sorting
+  const sortField = sortBy || 'title'
+  const order = sortOrder || 'asc'
+  
+  items.sort((a, b) => {
+    let aValue: any
+    let bValue: any
+    
+    switch (sortField) {
+      case 'stockOnHand':
+        aValue = a.stockOnHand ?? 0
+        bValue = b.stockOnHand ?? 0
+        break
+      case 'salePrice':
+        aValue = a.salePrice ?? a.price ?? a.mrp ?? 0
+        bValue = b.salePrice ?? b.price ?? b.mrp ?? 0
+        break
+      case 'mrp':
+        aValue = a.mrp ?? a.price ?? 0
+        bValue = b.mrp ?? b.price ?? 0
+        break
+      case 'createdAt':
+        aValue = new Date(a.createdAt).getTime()
+        bValue = new Date(b.createdAt).getTime()
+        break
+      case 'title':
+      default:
+        aValue = a.title.toLowerCase()
+        bValue = b.title.toLowerCase()
+        break
+    }
+    
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return order === 'asc' ? aValue - bValue : bValue - aValue
+    } else {
+      if (aValue < bValue) return order === 'asc' ? -1 : 1
+      if (aValue > bValue) return order === 'asc' ? 1 : -1
+      return 0
+    }
+  })
+  
+  // Apply pagination
+  const startIndex = (page - 1) * pageSize
+  items = items.slice(startIndex, startIndex + pageSize)
 
   return {
     items,
