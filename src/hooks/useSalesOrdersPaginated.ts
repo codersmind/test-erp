@@ -14,7 +14,7 @@ export interface PaginatedSalesOrdersResult {
 export const useSalesOrdersPaginated = (
   page: number,
   pageSize: number,
-  filters?: { customerId?: string; startDate?: string; endDate?: string },
+  filters?: { customerId?: string; startDate?: string; endDate?: string } | undefined,
 ) =>
   useQuery<PaginatedSalesOrdersResult>({
     queryKey: ['salesOrders', 'paginated', page, pageSize, filters],

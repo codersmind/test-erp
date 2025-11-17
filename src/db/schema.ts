@@ -40,7 +40,7 @@ export interface Product extends BaseEntity {
   isArchived: boolean
 }
 
-export type SalesOrderStatus = 'draft' | 'confirmed' | 'fulfilled' | 'cancelled'
+export type SalesOrderStatus = 'draft' | 'confirmed' | 'fulfilled' | 'cancelled' | 'paid' | 'unpaid' | 'complete' | 'refund'
 
 export interface SalesOrder extends BaseEntity {
   customerId: string
@@ -55,6 +55,7 @@ export interface SalesOrder extends BaseEntity {
   cgst?: number // CGST amount (when taxType is 'cgst_sgst')
   sgst?: number // SGST amount (when taxType is 'cgst_sgst')
   total: number
+  paidAmount: number // Amount paid so far
   notes?: string
 }
 
@@ -68,19 +69,21 @@ export interface SalesOrderItem {
   lineTotal: number
 }
 
-export type PurchaseOrderStatus = 'draft' | 'ordered' | 'received' | 'cancelled'
+export type PurchaseOrderStatus = 'draft' | 'ordered' | 'received' | 'cancelled' | 'paid' | 'unpaid' | 'complete' | 'refund'
 
 export interface PurchaseOrder extends BaseEntity {
   supplierName: string
   status: PurchaseOrderStatus
   issuedDate: string
   expectedDate?: string
+  dueDate?: string
   subtotal: number
   tax: number
   taxType?: 'gst' | 'cgst_sgst' // Tax type used for this order
   cgst?: number // CGST amount (when taxType is 'cgst_sgst')
   sgst?: number // SGST amount (when taxType is 'cgst_sgst')
   total: number
+  paidAmount: number // Amount paid so far
   notes?: string
   addToInventory?: boolean // Whether items should be added to product inventory
 }

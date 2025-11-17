@@ -4,6 +4,7 @@ import { useCreateCustomer } from '../hooks/useCustomers'
 import { useCustomersPaginated } from '../hooks/useCustomersPaginated'
 import { Pagination } from '../components/Pagination'
 import { CustomerEditModal } from '../components/CustomerEditModal'
+import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import type { Customer, CustomerType } from '../db/schema'
 
 const PAGE_SIZE = 20
@@ -14,6 +15,7 @@ export const CustomersPage = () => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null)
   const { data: paginatedData, isPending } = useCustomersPaginated(activeTab, page, PAGE_SIZE, searchQuery)
   const createCustomerMutation = useCreateCustomer()
 
@@ -177,6 +179,13 @@ export const CustomersPage = () => {
                   <span className="text-xs text-slate-400">Updated {new Date(customer.updatedAt).toLocaleString()}</span>
                   <button
                     type="button"
+                    onClick={() => setViewingCustomer(customer)}
+                    className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                  >
+                    View Details
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setEditingCustomer(customer)}
                     className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                   >
@@ -205,6 +214,11 @@ export const CustomersPage = () => {
         isOpen={editingCustomer !== null}
         onClose={() => setEditingCustomer(null)}
         customer={editingCustomer}
+      />
+      <CustomerDetailModal
+        isOpen={viewingCustomer !== null}
+        onClose={() => setViewingCustomer(null)}
+        customer={viewingCustomer}
       />
     </div>
   )

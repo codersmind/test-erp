@@ -40,6 +40,7 @@ type SalesOrderInput = {
   dueDate?: string
   discount?: number
   discountType?: 'amount' | 'percentage'
+  paidAmount?: number
   notes?: string
   items: Array<Omit<SalesOrderItem, 'id' | 'orderId' | 'lineTotal'> & { lineTotal?: number }>
 }
@@ -49,6 +50,8 @@ type PurchaseOrderInput = {
   status?: PurchaseOrder['status']
   issuedDate?: string
   expectedDate?: string
+  dueDate?: string
+  paidAmount?: number
   notes?: string
   items: Array<Omit<PurchaseOrderItem, 'id' | 'orderId' | 'lineTotal'> & { lineTotal?: number }>
   addToInventory?: boolean // Whether items should be added to product inventory
@@ -496,6 +499,7 @@ export const createSalesOrder = async (
     cgst,
     sgst,
     total,
+    paidAmount: input.paidAmount ?? 0,
     notes: input.notes,
   }
 
@@ -519,15 +523,46 @@ export const updateSalesOrderStatus = async (id: string, status: SalesOrder['sta
     throw new Error(`Sales order ${id} not found`)
   }
 
+  const previousStatus = existing.status
   const timestamp = nowIso()
+  
+  // When status changes to 'paid', automatically set paidAmount to total
+  // When status changes from 'paid' to something else, reset paidAmount to 0
+  let paidAmount = existing.paidAmount || 0
+  if (status === 'paid' && previousStatus !== 'paid') {
+    paidAmount = existing.total
+  } else if (previousStatus === 'paid' && status !== 'paid') {
+    paidAmount = 0
+  }
+  
   const updated: SalesOrder = {
     ...existing,
     status,
+    paidAmount,
     updatedAt: timestamp,
     version: existing.version + 1,
   }
 
-  await db.transaction('rw', db.salesOrders, db.syncQueue, async () => {
+  await db.transaction('rw', db.salesOrders, db.salesOrderItems, db.products, db.syncQueue, async () => {
+    // Handle refund: restock items when status changes to 'refund'
+    if (status === 'refund' && previousStatus !== 'refund') {
+      // Get all items for this order
+      const items = await db.salesOrderItems.where('orderId').equals(id).toArray()
+      // Restock each item (add back to inventory)
+      for (const item of items) {
+        await adjustProductStock(item.productId, item.quantity)
+      }
+    }
+    // Handle un-refund: remove stock again when status changes from 'refund' to something else
+    else if (previousStatus === 'refund' && status !== 'refund') {
+      // Get all items for this order
+      const items = await db.salesOrderItems.where('orderId').equals(id).toArray()
+      // Remove stock again (subtract from inventory)
+      for (const item of items) {
+        await adjustProductStock(item.productId, -item.quantity)
+      }
+    }
+
     await db.salesOrders.put(updated)
     await enqueueChange('salesOrder', id, 'update', { salesOrder: updated })
   })
@@ -610,9 +645,11 @@ export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId
     status,
     issuedDate,
     expectedDate: input.expectedDate,
+    dueDate: input.dueDate,
     subtotal: totals.subtotal,
     tax: 0,
     total: totals.subtotal,
+    paidAmount: input.paidAmount ?? 0,
     notes: input.notes,
     addToInventory: input.addToInventory ?? true, // Default to true for backward compatibility
   }
@@ -631,6 +668,168 @@ export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId
   })
 
   return { purchaseOrder, items }
+}
+
+export const updatePurchaseOrderStatus = async (id: string, status: PurchaseOrder['status']) => {
+  const existing = await db.purchaseOrders.get(id)
+  if (!existing) {
+    throw new Error(`Purchase order ${id} not found`)
+  }
+
+  const previousStatus = existing.status
+  const timestamp = nowIso()
+  
+  // When status changes to 'paid', automatically set paidAmount to total
+  // When status changes from 'paid' to something else, reset paidAmount to 0
+  let paidAmount = existing.paidAmount || 0
+  if (status === 'paid' && previousStatus !== 'paid') {
+    paidAmount = existing.total
+  } else if (previousStatus === 'paid' && status !== 'paid') {
+    paidAmount = 0
+  }
+  
+  const updated: PurchaseOrder = {
+    ...existing,
+    status,
+    paidAmount,
+    updatedAt: timestamp,
+    version: existing.version + 1,
+  }
+
+  await db.transaction('rw', db.purchaseOrders, db.purchaseOrderItems, db.products, db.syncQueue, async () => {
+    // Handle refund: remove stock when status changes to 'refund' (if items were added to inventory)
+    if (status === 'refund' && previousStatus !== 'refund' && existing.addToInventory) {
+      // Get all items for this order
+      const items = await db.purchaseOrderItems.where('orderId').equals(id).toArray()
+      // Remove stock (subtract from inventory)
+      for (const item of items) {
+        await adjustProductStock(item.productId, -item.quantity)
+      }
+    }
+    // Handle un-refund: add stock back when status changes from 'refund' to something else (if addToInventory is true)
+    else if (previousStatus === 'refund' && status !== 'refund' && existing.addToInventory) {
+      // Get all items for this order
+      const items = await db.purchaseOrderItems.where('orderId').equals(id).toArray()
+      // Add stock back (increase inventory)
+      for (const item of items) {
+        await adjustProductStock(item.productId, item.quantity)
+      }
+    }
+
+    await db.purchaseOrders.put(updated)
+    await enqueueChange('purchaseOrder', id, 'update', { purchaseOrder: updated })
+  })
+
+  return updated
+}
+
+export const recordPayment = async (
+  orderId: string,
+  amount: number,
+  type: 'sales' | 'purchase',
+  _paymentDate?: string,
+) => {
+  const timestamp = nowIso()
+
+  if (type === 'sales') {
+    const order = await db.salesOrders.get(orderId)
+    if (!order) {
+      throw new Error(`Sales order ${orderId} not found`)
+    }
+
+    const newPaidAmount = Math.min((order.paidAmount || 0) + amount, order.total)
+    const updated: SalesOrder = {
+      ...order,
+      paidAmount: newPaidAmount,
+      updatedAt: timestamp,
+      version: order.version + 1,
+    }
+
+    await db.transaction('rw', db.salesOrders, db.syncQueue, async () => {
+      await db.salesOrders.put(updated)
+      await enqueueChange('salesOrder', orderId, 'update', { salesOrder: updated })
+    })
+
+    return updated
+  } else {
+    const order = await db.purchaseOrders.get(orderId)
+    if (!order) {
+      throw new Error(`Purchase order ${orderId} not found`)
+    }
+
+    const newPaidAmount = Math.min((order.paidAmount || 0) + amount, order.total)
+    const updated: PurchaseOrder = {
+      ...order,
+      paidAmount: newPaidAmount,
+      updatedAt: timestamp,
+      version: order.version + 1,
+    }
+
+    await db.transaction('rw', db.purchaseOrders, db.syncQueue, async () => {
+      await db.purchaseOrders.put(updated)
+      await enqueueChange('purchaseOrder', orderId, 'update', { purchaseOrder: updated })
+    })
+
+    return updated
+  }
+}
+
+export const getCustomerSummary = async (customerId: string) => {
+  const orders = await db.salesOrders.where('customerId').equals(customerId).toArray()
+  const totalSales = orders.reduce((sum, order) => sum + order.total, 0)
+  const totalPaid = orders.reduce((sum, order) => sum + (order.paidAmount || 0), 0)
+  const totalDue = totalSales - totalPaid
+  const dueOrders = orders.filter((order) => {
+    // Don't show orders with status 'paid' as due
+    if (order.status === 'paid') return false
+    const dueAmount = order.total - (order.paidAmount || 0)
+    return dueAmount > 0
+  })
+
+  return {
+    totalSales,
+    totalPaid,
+    totalDue,
+    totalOrders: orders.length,
+    dueOrders: dueOrders.length,
+    orders: dueOrders.map((order) => ({
+      id: order.id,
+      date: order.issuedDate,
+      dueDate: order.dueDate,
+      total: order.total,
+      paidAmount: order.paidAmount || 0,
+      dueAmount: order.total - (order.paidAmount || 0),
+    })),
+  }
+}
+
+export const getSupplierSummary = async (supplierName: string) => {
+  const orders = await db.purchaseOrders.where('supplierName').equals(supplierName).toArray()
+  const totalPurchases = orders.reduce((sum, order) => sum + order.total, 0)
+  const totalPaid = orders.reduce((sum, order) => sum + (order.paidAmount || 0), 0)
+  const totalDue = totalPurchases - totalPaid
+  const dueOrders = orders.filter((order) => {
+    // Don't show orders with status 'paid' as due
+    if (order.status === 'paid') return false
+    const dueAmount = order.total - (order.paidAmount || 0)
+    return dueAmount > 0
+  })
+
+  return {
+    totalPurchases,
+    totalPaid,
+    totalDue,
+    totalOrders: orders.length,
+    dueOrders: dueOrders.length,
+    orders: dueOrders.map((order) => ({
+      id: order.id,
+      date: order.issuedDate,
+      dueDate: order.dueDate,
+      total: order.total,
+      paidAmount: order.paidAmount || 0,
+      dueAmount: order.total - (order.paidAmount || 0),
+    })),
+  }
 }
 
 export const enqueueManualSyncMarker = async () => {

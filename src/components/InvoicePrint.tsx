@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
 import type { SalesOrder, SalesOrderItem, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 import { getPrintSettings, getPrintStyles, type PrintPaperSize, type CustomPrintFormat } from '../utils/printSettings'
+import { getDefaultTemplate, renderTemplate } from '../utils/invoiceTemplate'
+import { getProduct } from '../db/localDataService'
 
 interface InvoicePrintProps {
   order: SalesOrder | PurchaseOrder
@@ -48,51 +50,120 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
       const { getCustomFormat } = await import('../utils/printSettings')
       formatDetails = await getCustomFormat(formatId)
     }
+
+    // Check for custom template
+    const customTemplate = await getDefaultTemplate()
     
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
-    // Use format details if available, otherwise use settings
-    // const companyInfo = formatDetails || settings
-    const showLogo = formatDetails?.showLogo ?? settings.showLogo
-    const logoUrl = formatDetails?.logoUrl ?? settings.logoUrl
-    const companyName = formatDetails?.companyName || settings.companyName
-    const companyGST = formatDetails?.companyGst || settings.companyGst
-    const companyAddress = formatDetails?.companyAddress || settings.companyAddress
-    const companyPhone = formatDetails?.companyPhone || settings.companyPhone
-    const companyEmail = formatDetails?.companyEmail || settings.companyEmail
-    // const footerText = formatDetails?.footerText || settings.footerText || 'Thank you for your business!'
-    
-    // Build header with company info if available
-    let headerContent = `
-      <div class="header">
-        ${showLogo && logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height: 50px; margin-bottom: 10px;" />` : ''}
-        ${companyName ? `<h1>${companyName}</h1>` : `<h1>${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
-        ${companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${companyAddress}</p>` : ''}
-        ${companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${companyPhone}</p>` : ''}
-        ${companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${companyEmail}</p>` : ''}
-        ${companyGST ? `<p style="font-size: 10px; margin: 3px 0;">GST: ${companyGST}</p>` : ''}
-        <p style="margin-top: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
-      </div>
-    `
+    // Use custom template if available
+    if (customTemplate) {
+      // Prepare data for template
+      const companyInfo = formatDetails || settings
+      const orderDate = new Date(order.issuedDate || order.createdAt).toLocaleDateString()
+      const orderTotal = 'total' in order ? order.total : 0
+      const orderSubtotal = 'subtotal' in order ? order.subtotal : 0
+      const orderTax = 'tax' in order ? order.tax : 0
+      const orderDiscount = 'discount' in order ? order.discount || 0 : 0
+      const orderTaxType = 'taxType' in order ? order.taxType : undefined
+      const orderCgst = 'cgst' in order ? order.cgst : undefined
+      const orderSgst = 'sgst' in order ? order.sgst : undefined
+      
+      // Get product names for items
+      const itemsWithNames = await Promise.all(
+        items.map(async (item) => {
+          const product = await getProduct(item.productId)
+          return {
+            productName: product?.title || item.productId,
+            quantity: item.quantity,
+            unitPrice: ('unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0).toLocaleString(undefined, {
+              style: 'currency',
+              currency: 'INR',
+            }),
+            discount: ('discount' in item ? item.discount : 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+            lineTotal: item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+          }
+        })
+      )
+      
+      const paidAmount = 'paidAmount' in order ? (order.paidAmount || 0) : 0
+      const dueAmount = orderTotal - paidAmount
+      const dueDate = 'dueDate' in order && order.dueDate ? new Date(order.dueDate).toLocaleDateString() : ''
+      
+      const templateData = {
+        type: type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER',
+        orderId: order.id.slice(-6),
+        companyName: companyInfo.companyName || '',
+        companyAddress: companyInfo.companyAddress || '',
+        companyPhone: companyInfo.companyPhone || '',
+        companyEmail: companyInfo.companyEmail || '',
+        companyGst: companyInfo.companyGst || '',
+        billToLabel: type === 'sales' ? 'Bill To' : 'Supplier',
+        customerName: customerName || supplierName || 'N/A',
+        orderDate,
+        dueDate,
+        status: order.status,
+        notes: order.notes || '',
+        items: itemsWithNames,
+        showDiscount: type === 'sales',
+        subtotal: orderSubtotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+        discount: orderDiscount > 0 ? orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        tax: orderTax > 0 && orderTaxType !== 'cgst_sgst' ? orderTax.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        cgst: orderCgst && typeof orderCgst === 'number' && orderCgst > 0 ? Number(orderCgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
+        sgst: orderSgst && typeof orderSgst === 'number' && orderSgst > 0 ? Number(orderSgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
+        total: orderTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+        paidAmount: paidAmount > 0 && order.status !== 'paid' ? paidAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        dueAmount: dueAmount > 0 && order.status !== 'paid' ? dueAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        footerText: companyInfo.footerText || 'Thank you for your business!',
+      }
+      
+      const renderedHtml = renderTemplate(customTemplate, templateData)
+      printWindow.document.open('text/html', 'replace')
+      printWindow.document.write(renderedHtml)
+      printWindow.document.close()
+    } else {
+      // Use default template (existing code)
+      const showLogo = formatDetails?.showLogo ?? settings.showLogo
+      const logoUrl = formatDetails?.logoUrl ?? settings.logoUrl
+      const companyName = formatDetails?.companyName || settings.companyName
+      const companyGST = formatDetails?.companyGst || settings.companyGst
+      const companyAddress = formatDetails?.companyAddress || settings.companyAddress
+      const companyPhone = formatDetails?.companyPhone || settings.companyPhone
+      const companyEmail = formatDetails?.companyEmail || settings.companyEmail
+      
+      // Build header with company info if available
+      let headerContent = `
+        <div class="header">
+          ${showLogo && logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height: 50px; margin-bottom: 10px;" />` : ''}
+          ${companyName ? `<h1>${companyName}</h1>` : `<h1>${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
+          ${companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${companyAddress}</p>` : ''}
+          ${companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${companyPhone}</p>` : ''}
+          ${companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${companyEmail}</p>` : ''}
+          ${companyGST ? `<p style="font-size: 10px; margin: 3px 0;">GST: ${companyGST}</p>` : ''}
+          <p style="margin-top: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
+        </div>
+      `
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${type === 'sales' ? 'Invoice' : 'Purchase Order'} - ${order.id.slice(-6)}</title>
-          <style>
-            ${styles}
-          </style>
-        </head>
-        <body>
-          ${headerContent}
-          ${printRef.current.innerHTML.replace(/<div[^>]*class="[^"]*header[^"]*"[^>]*>[\s\S]*?<\/div>/i, '')}
-        </body>
-      </html>
-    `)
+      printWindow.document.open('text/html', 'replace')
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${type === 'sales' ? 'Invoice' : 'Purchase Order'} - ${order.id.slice(-6)}</title>
+            <style>
+              ${styles}
+            </style>
+          </head>
+          <body>
+            ${headerContent}
+            ${printRef.current.innerHTML.replace(/<div[^>]*class="[^"]*header[^"]*"[^>]*>[\s\S]*?<\/div>/i, '')}
+          </body>
+        </html>
+      `)
+      printWindow.document.close()
+    }
     
-    printWindow.document.close()
     printWindow.focus()
     setTimeout(() => {
       printWindow.print()
@@ -208,6 +279,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
           <div className="info-section">
             <h3>Order Details</h3>
             <p>Date: {orderDate}</p>
+            {'dueDate' in order && order.dueDate && <p>Due Date: {new Date(order.dueDate).toLocaleDateString()}</p>}
             <p>Status: {order.status}</p>
             {order.notes && <p>Notes: {order.notes}</p>}
           </div>
@@ -279,6 +351,18 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
             <span>Total:</span>
             <span>{orderTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
           </div>
+          {'paidAmount' in order && (order.paidAmount || 0) > 0 && (
+            <div className="totals-row">
+              <span>Paid:</span>
+              <span>{(order.paidAmount || 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
+            </div>
+          )}
+          {'paidAmount' in order && order.status !== 'paid' && (orderTotal - (order.paidAmount || 0)) > 0 && (
+            <div className="totals-row" style={{ color: '#dc2626', fontWeight: 'bold' }}>
+              <span>Due Amount:</span>
+              <span>{(orderTotal - (order.paidAmount || 0)).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
+            </div>
+          )}
         </div>
 
         <div className="footer">

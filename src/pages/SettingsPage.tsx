@@ -42,6 +42,7 @@ import {
   setPurchaseOrderSettings,
   type PurchaseOrderSettings,
 } from '../utils/purchaseOrderSettings'
+import { InvoiceTemplateEditor } from '../components/InvoiceTemplateEditor'
 
 type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'purchaseOrder' | 'integration' | 'danger'
 
@@ -119,6 +120,7 @@ export const SettingsPage = () => {
     defaultAddToInventory: true,
   })
   const [isSavingPurchaseOrder, setIsSavingPurchaseOrder] = useState(false)
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -1238,6 +1240,23 @@ export const SettingsPage = () => {
           {isSavingPrint && <p className="text-xs text-slate-500">Saving...</p>}
         </div>
 
+        {/* Invoice Template Editor */}
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+          <h2 className="text-lg font-semibold">Invoice Template</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            Customize the design of your invoices using HTML and CSS. Create multiple templates and set one as default.
+          </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setShowTemplateEditor(true)}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Open Template Editor
+            </button>
+          </div>
+        </section>
+
         {/* Saved Custom Formats */}
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -1589,6 +1608,11 @@ export const SettingsPage = () => {
           </div>
         )}
       </div>
+      
+      <InvoiceTemplateEditor
+        isOpen={showTemplateEditor}
+        onClose={() => setShowTemplateEditor(false)}
+      />
     </div>
   )
 }

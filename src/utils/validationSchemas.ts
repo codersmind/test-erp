@@ -65,9 +65,48 @@ export const salesOrderSchema = yup.object({
     .string()
     .oneOf(['amount', 'percentage'], 'Invalid discount type')
     .default('amount'),
+  isPaid: yup.boolean().default(false),
+  paidAmount: yup
+    .number()
+    .min(0, 'Paid amount must be greater than or equal to 0')
+    .typeError('Paid amount must be a number')
+    .default(0),
+  lineItems: yup.array().of(
+    yup.object({
+      productId: yup.string(),
+      quantity: yup.number().min(1).default(1),
+      unitPrice: yup.number().min(0).default(0),
+      discount: yup.number().min(0).default(0),
+    })
+  ),
+  type: yup.string().oneOf(['gst', 'cgst_sgst']).default('gst'),
+  gstRate: yup.number().min(0).max(100).default(5),
+  cgstRate: yup.number().min(0).max(50).default(2.5),
+  sgstRate: yup.number().min(0).max(50).default(2.5),
+  defaultState: yup.string().nullable(),
+  stateRates: yup.object().default({}),
+})
+
+export const purchaseOrderSchema = yup.object({
+  supplierId: yup.string().required('Supplier is required'),
+  addToInventory: yup.boolean().default(true),
+  isPaid: yup.boolean().default(false),
+  paidAmount: yup
+    .number()
+    .min(0, 'Paid amount must be greater than or equal to 0')
+    .typeError('Paid amount must be a number')
+    .default(0),
+  lineItems: yup.array().of(
+    yup.object({
+      productId: yup.string(),
+      quantity: yup.number().min(1).default(1),
+      unitCost: yup.number().min(0).default(0),
+    })
+  ),
 })
 
 export type ProductFormValues = yup.InferType<typeof productSchema>
 export type CustomerFormValues = yup.InferType<typeof customerSchema>
 export type SalesOrderFormValues = yup.InferType<typeof salesOrderSchema>
+export type PurchaseOrderFormValues = yup.InferType<typeof purchaseOrderSchema>
 
