@@ -11,6 +11,7 @@ import { InvoicePrint } from '../components/InvoicePrint'
 import Datepicker from 'react-tailwindcss-datepicker'
 import { db } from '../db/database'
 import { getProduct, getCustomer } from '../db/localDataService'
+import { getPurchaseOrderSettings } from '../utils/purchaseOrderSettings'
 import type { Customer, Product, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 
 interface LineItem {
@@ -83,15 +84,25 @@ export const PurchaseOrdersPage = () => {
   const [page, setPage] = useState(1)
   const [filters, setFilters] = useState<{ supplierName?: string; startDate?: string; endDate?: string }>({})
   const { data: paginatedData, isPending } = usePurchaseOrdersPaginated(page, PAGE_SIZE, filters)
+  const [defaultAddToInventory, setDefaultAddToInventory] = useState(true)
   const [form, setForm] = useState({
     supplierId: '',
     lineItems: [{ productId: '', quantity: 1, unitCost: 0 }],
-    addToInventory: true, // Default to true
+    addToInventory: true,
   })
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const createPurchaseOrderMutation = useCreatePurchaseOrder()
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const settings = await getPurchaseOrderSettings()
+      setDefaultAddToInventory(settings.defaultAddToInventory)
+      setForm((prev) => ({ ...prev, addToInventory: settings.defaultAddToInventory }))
+    }
+    loadSettings()
+  }, [])
 
   const orders = paginatedData?.items ?? []
   const total = paginatedData?.total ?? 0
@@ -168,7 +179,7 @@ export const PurchaseOrdersPage = () => {
       notes: 'Captured offline',
       addToInventory: form.addToInventory,
     })
-    setForm({ supplierId: '', lineItems: [{ productId: '', quantity: 1, unitCost: 0 }], addToInventory: true })
+    setForm({ supplierId: '', lineItems: [{ productId: '', quantity: 1, unitCost: 0 }], addToInventory: defaultAddToInventory })
   }
 
   const handleSupplierCreated = (supplier: Customer) => {

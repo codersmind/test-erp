@@ -37,8 +37,13 @@ import {
   type PrintPaperSize,
   type CustomPrintFormat,
 } from '../utils/printSettings'
+import {
+  getPurchaseOrderSettings,
+  setPurchaseOrderSettings,
+  type PurchaseOrderSettings,
+} from '../utils/purchaseOrderSettings'
 
-type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'integration' | 'danger'
+type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'purchaseOrder' | 'integration' | 'danger'
 
 export const SettingsPage = () => {
   const { lastSyncedAt, pendingCount } = useSync()
@@ -110,6 +115,10 @@ export const SettingsPage = () => {
   })
   const [editingFormatId, setEditingFormatId] = useState<string | null>(null)
   const [isSavingFormat, setIsSavingFormat] = useState(false)
+  const [purchaseOrderSettings, setPurchaseOrderSettingsState] = useState<PurchaseOrderSettings>({
+    defaultAddToInventory: true,
+  })
+  const [isSavingPurchaseOrder, setIsSavingPurchaseOrder] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -118,11 +127,17 @@ export const SettingsPage = () => {
     loadUnits()
     loadOrderIdSettings()
     loadPrintSettings()
+    loadPurchaseOrderSettings()
   }, [])
 
   const loadPrintSettings = async () => {
     const settings = await getPrintSettings()
     setPrintSettingsState(settings)
+  }
+
+  const loadPurchaseOrderSettings = async () => {
+    const settings = await getPurchaseOrderSettings()
+    setPurchaseOrderSettingsState(settings)
   }
 
   const loadOrderIdSettings = async () => {
@@ -261,6 +276,7 @@ export const SettingsPage = () => {
     { id: 'units', label: 'Product Units', icon: '📦' },
     { id: 'orderId', label: 'Order ID Format', icon: '🔢' },
     { id: 'print', label: 'Print Settings', icon: '🖨️' },
+    { id: 'purchaseOrder', label: 'Purchase Orders', icon: '📋' },
     { id: 'integration', label: 'Integration', icon: '🔗' },
     { id: 'danger', label: 'Danger Zone', icon: '⚠️' },
   ]
@@ -1489,6 +1505,50 @@ export const SettingsPage = () => {
               )}
             </div>
           </section>
+          </div>
+        )}
+
+        {/* Purchase Order Settings Tab */}
+        {activeTab === 'purchaseOrder' && (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <h2 className="text-lg font-semibold">Purchase Order Settings</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Configure default settings for purchase orders. These settings can be overridden when creating individual purchase orders.
+              </p>
+
+              <div className="mt-4 space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="defaultAddToInventory"
+                      checked={purchaseOrderSettings.defaultAddToInventory}
+                      onChange={async (e) => {
+                        const newSettings = { ...purchaseOrderSettings, defaultAddToInventory: e.target.checked }
+                        setPurchaseOrderSettingsState(newSettings)
+                        setIsSavingPurchaseOrder(true)
+                        try {
+                          await setPurchaseOrderSettings(newSettings)
+                        } finally {
+                          setIsSavingPurchaseOrder(false)
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="defaultAddToInventory" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Default: Add items to product inventory
+                      </label>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        When enabled, new purchase orders will automatically add items to product stock by default. You can still override this setting for individual purchase orders.
+                      </p>
+                    </div>
+                  </div>
+                  {isSavingPurchaseOrder && <p className="mt-2 text-xs text-slate-500">Saving...</p>}
+                </div>
+              </div>
+            </section>
           </div>
         )}
 

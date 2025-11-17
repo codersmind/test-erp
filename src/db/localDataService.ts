@@ -14,7 +14,7 @@ import type {
 } from './schema'
 import { DEFAULT_TENANT_ID, nowIso } from './utils'
 
-type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'state' | 'gst' | 'notes'>
+export type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'state' | 'gst' | 'notes'>
 
 type ProductInput = Pick<
   Product,
