@@ -42,6 +42,11 @@ import {
   setPurchaseOrderSettings,
   type PurchaseOrderSettings,
 } from '../utils/purchaseOrderSettings'
+import {
+  getPrinterSettings,
+  setPrinterSettings,
+  type PrinterSettings,
+} from '../utils/printerSettings'
 
 type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'purchaseOrder' | 'integration' | 'danger'
 
@@ -119,6 +124,19 @@ export const SettingsPage = () => {
     defaultAddToInventory: true,
   })
   const [isSavingPurchaseOrder, setIsSavingPurchaseOrder] = useState(false)
+  const [printerSettings, setPrinterSettingsState] = useState<PrinterSettings>({
+    defaultPrinterName: null,
+    defaultPrinterDescription: null,
+  })
+  const [availablePrinters, setAvailablePrinters] = useState<Array<{
+    name: string
+    displayName: string
+    description: string
+    status: number
+    isDefault: boolean
+  }>>([])
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState(false)
+  const [isSavingPrinter, setIsSavingPrinter] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -128,6 +146,8 @@ export const SettingsPage = () => {
     loadOrderIdSettings()
     loadPrintSettings()
     loadPurchaseOrderSettings()
+    loadPrinterSettings()
+    loadAvailablePrinters()
   }, [])
 
   const loadPrintSettings = async () => {
@@ -138,6 +158,27 @@ export const SettingsPage = () => {
   const loadPurchaseOrderSettings = async () => {
     const settings = await getPurchaseOrderSettings()
     setPurchaseOrderSettingsState(settings)
+  }
+
+  const loadPrinterSettings = async () => {
+    const settings = await getPrinterSettings()
+    setPrinterSettingsState(settings)
+  }
+
+  const loadAvailablePrinters = async () => {
+    if (!window.electronPrinter) return
+    
+    setIsLoadingPrinters(true)
+    try {
+      const result = await window.electronPrinter.getPrinters()
+      if (result.success && result.printers) {
+        setAvailablePrinters(result.printers)
+      }
+    } catch (error) {
+      console.error('Failed to load printers:', error)
+    } finally {
+      setIsLoadingPrinters(false)
+    }
   }
 
   const loadOrderIdSettings = async () => {
@@ -1237,6 +1278,78 @@ export const SettingsPage = () => {
 
           {isSavingPrint && <p className="text-xs text-slate-500">Saving...</p>}
         </div>
+
+        {/* Printer Selection */}
+        {window.electronPrinter && (
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+            <h2 className="text-lg font-semibold">Printer Settings</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              Select a default printer for automatic printing. If no printer is selected, a printer selection dialog will appear when printing.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
+                  Default Printer
+                </label>
+                {isLoadingPrinters ? (
+                  <p className="text-sm text-slate-500">Loading printers...</p>
+                ) : availablePrinters.length === 0 ? (
+                  <p className="text-sm text-slate-500">No printers detected. Make sure your printer is connected and try refreshing.</p>
+                ) : (
+                  <select
+                    value={printerSettings.defaultPrinterName || ''}
+                    onChange={async (e) => {
+                      const selectedPrinter = availablePrinters.find((p) => p.name === e.target.value)
+                      const newSettings: PrinterSettings = {
+                        defaultPrinterName: selectedPrinter?.name || null,
+                        defaultPrinterDescription: selectedPrinter?.displayName || null,
+                      }
+                      setPrinterSettingsState(newSettings)
+                      setIsSavingPrinter(true)
+                      try {
+                        await setPrinterSettings(newSettings)
+                      } finally {
+                        setIsSavingPrinter(false)
+                      }
+                    }}
+                    className="w-full max-w-md rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    <option value="">No default printer (show dialog)</option>
+                    {availablePrinters.map((printer) => (
+                      <option key={printer.name} value={printer.name}>
+                        {printer.displayName} {printer.isDefault ? '(System Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={loadAvailablePrinters}
+                    disabled={isLoadingPrinters}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    {isLoadingPrinters ? 'Refreshing...' : 'Refresh Printers'}
+                  </button>
+                  {isSavingPrinter && <span className="text-xs text-slate-500">Saving...</span>}
+                </div>
+                {printerSettings.defaultPrinterName && (
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                    Selected: <strong>{printerSettings.defaultPrinterDescription || printerSettings.defaultPrinterName}</strong>
+                    <br />
+                    Invoices will be printed automatically to this printer without showing a dialog.
+                  </p>
+                )}
+                {!printerSettings.defaultPrinterName && (
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                    When printing, a printer selection dialog will appear for you to choose a printer.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Saved Custom Formats */}
         <div className="mt-6 space-y-4">

@@ -48,12 +48,8 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
       const { getCustomFormat } = await import('../utils/printSettings')
       formatDetails = await getCustomFormat(formatId)
     }
-    
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
 
     // Use format details if available, otherwise use settings
-    // const companyInfo = formatDetails || settings
     const showLogo = formatDetails?.showLogo ?? settings.showLogo
     const logoUrl = formatDetails?.logoUrl ?? settings.logoUrl
     const companyName = formatDetails?.companyName || settings.companyName
@@ -61,7 +57,6 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
     const companyAddress = formatDetails?.companyAddress || settings.companyAddress
     const companyPhone = formatDetails?.companyPhone || settings.companyPhone
     const companyEmail = formatDetails?.companyEmail || settings.companyEmail
-    // const footerText = formatDetails?.footerText || settings.footerText || 'Thank you for your business!'
     
     // Build header with company info if available
     let headerContent = `
@@ -76,7 +71,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
       </div>
     `
 
-    printWindow.document.write(`
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -90,8 +85,55 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
           ${printRef.current.innerHTML.replace(/<div[^>]*class="[^"]*header[^"]*"[^>]*>[\s\S]*?<\/div>/i, '')}
         </body>
       </html>
-    `)
-    
+    `
+
+    // Use Electron printer if available
+    if (window.electronPrinter) {
+      try {
+        // Get printer settings
+        const { getPrinterSettings } = await import('../utils/printerSettings')
+        const printerSettings = await getPrinterSettings()
+        
+        let printerName: string | undefined = undefined
+        let silent = false
+
+        if (printerSettings.defaultPrinterName) {
+          // Use default printer, print silently
+          printerName = printerSettings.defaultPrinterName
+          silent = true
+        } else {
+          // Show printer selection dialog
+          const dialogResult = await window.electronPrinter.showDialog()
+          if (!dialogResult.success || !dialogResult.printer) {
+            return // User cancelled
+          }
+          printerName = dialogResult.printer.name
+          silent = false
+        }
+
+        // Print using Electron
+        const result = await window.electronPrinter.print({
+          html: htmlContent,
+          printerName,
+          silent,
+        })
+
+        if (!result.success) {
+          console.error('Print failed:', result.error)
+          alert(`Print failed: ${result.error || 'Unknown error'}`)
+        }
+        return
+      } catch (error) {
+        console.error('Error using Electron printer:', error)
+        // Fall through to browser print
+      }
+    }
+
+    // Fallback to browser print dialog
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    printWindow.document.write(htmlContent)
     printWindow.document.close()
     printWindow.focus()
     setTimeout(() => {

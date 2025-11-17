@@ -51,3 +51,16 @@ contextBridge.exposeInMainWorld('electronUpdater', {
   },
 })
 
+// Printer API
+contextBridge.exposeInMainWorld('electronPrinter', {
+  async getPrinters() {
+    return ipcRenderer.invoke('printer:get-printers')
+  },
+  async print(options: { html: string; printerName?: string; silent?: boolean }) {
+    return ipcRenderer.invoke('printer:print', options)
+  },
+  async showDialog() {
+    return ipcRenderer.invoke('printer:show-dialog')
+  },
+})
+
