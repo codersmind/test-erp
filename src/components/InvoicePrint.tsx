@@ -112,8 +112,8 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         cgst: orderCgst && typeof orderCgst === 'number' && orderCgst > 0 ? Number(orderCgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
         sgst: orderSgst && typeof orderSgst === 'number' && orderSgst > 0 ? Number(orderSgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
         total: orderTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
-        paidAmount: paidAmount > 0 && order.status !== 'paid' ? paidAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
-        dueAmount: dueAmount > 0 && order.status !== 'paid' ? dueAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        paidAmount: paidAmount > 0 && dueAmount > 0 ? paidAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        dueAmount: dueAmount > 0 ? dueAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
         footerText: companyInfo.footerText || 'Thank you for your business!',
       }
       
@@ -400,7 +400,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
               <span>{(order.paidAmount || 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
             </div>
           )}
-          {'paidAmount' in order && order.status !== 'paid' && (orderTotal - (order.paidAmount || 0)) > 0 && (
+          {'paidAmount' in order && (orderTotal - (order.paidAmount || 0)) > 0 && (
             <div className="totals-row" style={{ color: '#dc2626', fontWeight: 'bold' }}>
               <span>Due Amount:</span>
               <span>{(orderTotal - (order.paidAmount || 0)).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>

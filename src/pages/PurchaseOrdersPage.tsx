@@ -81,7 +81,7 @@ const PurchaseOrderRow = ({ order }: { order: PurchaseOrder }) => {
         <td className="whitespace-nowrap px-3 py-4 text-right text-sm text-slate-500 dark:text-slate-400">
           <div className="flex flex-col items-end">
             <span>{order.total.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
-            {order.status !== 'paid' && (order.total - (order.paidAmount || 0)) > 0 && (
+            {(order.total - (order.paidAmount || 0)) > 0 && (
               <span className="text-xs text-red-600 dark:text-red-400">
                 Due: {(order.total - (order.paidAmount || 0)).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
               </span>
@@ -248,6 +248,7 @@ export const PurchaseOrdersPage = () => {
               notes: 'Captured offline',
               addToInventory: values.addToInventory,
               paidAmount: values.isPaid ? totalAmount : (values.paidAmount || 0),
+              roundFigure: values.roundFigure,
             })
 
             resetForm({
@@ -286,8 +287,8 @@ export const PurchaseOrdersPage = () => {
               }
             }
 
-  return (
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            return (
+              <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Supplier</label>
             <div className="mt-1">
@@ -422,110 +423,114 @@ export const PurchaseOrdersPage = () => {
                 ? 'Items will be added to product stock when order is created.'
                 : 'Items will be recorded in purchase order only, without updating product stock.'}
             </p>
-                  <div className="space-y-3">
-                    {/* Round Figure */}
-                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="roundFigure"
-                          checked={values.roundFigure}
-                          onChange={(e) => setFieldValue('roundFigure', e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-600 dark:bg-slate-800"
-                        />
-                        <label htmlFor="roundFigure" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Round Figure
-                        </label>
-                      </div>
-                      {values.roundFigure && roundDifference > 0 && (
-                        <div className="mt-2 flex items-center justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">Round adjustment (extra discount)</span>
-                          <span className="font-medium text-red-600 dark:text-red-400">
-                            -{roundDifference.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+                    {/* Total */}
+                    <div className="mb-4 flex items-center justify-between">
                       <span className="text-base font-semibold text-slate-900 dark:text-slate-50">Total</span>
                       <span className="text-lg font-bold text-slate-900 dark:text-slate-50">
                         {totalAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                       </span>
                     </div>
 
-                    {/* Payment Section */}
-                    <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          id="isPaid"
-                          checked={values.isPaid}
-                          onChange={(e) => {
-                            const isPaid = e.target.checked
-                            setFieldValue('isPaid', isPaid)
-                            setFieldValue('paidAmount', isPaid ? totalAmount : values.paidAmount)
-                          }}
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-600 dark:bg-slate-800"
-                        />
-                        <label htmlFor="isPaid" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Paid
-                        </label>
+                    {/* Round Figure and Payment in Grid */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {/* Round Figure */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="roundFigure"
+                            checked={values.roundFigure}
+                            onChange={(e) => setFieldValue('roundFigure', e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-600 dark:bg-slate-800"
+                          />
+                          <label htmlFor="roundFigure" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Round Figure
+                          </label>
+                        </div>
+                        {values.roundFigure && roundDifference > 0 && (
+                          <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                            <span>Round adjustment</span>
+                            <span className="font-medium text-red-600 dark:text-red-400">
+                              -{roundDifference.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
-                      {!values.isPaid && (
-                        <div>
-                          <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
-                            Paid Amount
-                          </label>
+                      {/* Payment Section */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
                           <input
-                            type="number"
-                            min="0"
-                            max={totalAmount}
-                            step="0.01"
-                            value={values.paidAmount || ''}
+                            type="checkbox"
+                            id="isPaid"
+                            checked={values.isPaid}
                             onChange={(e) => {
-                              const value = Number.parseFloat(e.target.value) || 0
-                              const paidAmount = Math.min(Math.max(0, value), totalAmount)
-                              setFieldValue('paidAmount', paidAmount)
+                              const isPaid = e.target.checked
+                              setFieldValue('isPaid', isPaid)
+                              setFieldValue('paidAmount', isPaid ? totalAmount : values.paidAmount)
                             }}
-                            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                            placeholder="0.00"
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-600 dark:bg-slate-800"
                           />
+                          <label htmlFor="isPaid" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Paid
+                          </label>
                         </div>
-                      )}
 
-                      {values.paidAmount > 0 && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">Paid</span>
-                          <span className="font-medium text-green-600 dark:text-green-400">
-                            {values.paidAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
-                          </span>
-                        </div>
-                      )}
+                        {!values.isPaid && (
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                              Paid Amount
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={totalAmount}
+                              step="0.01"
+                              value={values.paidAmount || ''}
+                              onChange={(e) => {
+                                const value = Number.parseFloat(e.target.value) || 0
+                                const paidAmount = Math.min(Math.max(0, value), totalAmount)
+                                setFieldValue('paidAmount', paidAmount)
+                              }}
+                              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        )}
 
-                      {values.paidAmount < totalAmount && totalAmount > 0 && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">Due Amount</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">
-                            {(totalAmount - values.paidAmount).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
-                          </span>
-                        </div>
-                      )}
+                        {values.paidAmount > 0 && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600 dark:text-slate-400">Paid</span>
+                            <span className="font-medium text-green-600 dark:text-green-400">
+                              {values.paidAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                            </span>
+                          </div>
+                        )}
+
+                        {values.paidAmount < totalAmount && totalAmount > 0 && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600 dark:text-slate-400">Due</span>
+                            <span className="font-semibold text-red-600 dark:text-red-400">
+                              {(totalAmount - values.paidAmount).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                  </div>
 
-                    <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                        disabled={createPurchaseOrderMutation.isPending || isSubmitting || !values.supplierId || totalAmount === 0}
-                className="w-full rounded-md bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-auto"
-              >
-                        {createPurchaseOrderMutation.isPending || isSubmitting ? 'Saving…' : 'Save purchase'}
-              </button>
-                    </div>
-            </div>
-          </div>
-        </form>
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      disabled={createPurchaseOrderMutation.isPending || isSubmitting || !values.supplierId || totalAmount === 0}
+                      className="w-full rounded-md bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-auto"
+                    >
+                      {createPurchaseOrderMutation.isPending || isSubmitting ? 'Saving…' : 'Save purchase'}
+                    </button>
+                  </div>
+                </div>
+              </form>
             )
           }}
         </Formik>

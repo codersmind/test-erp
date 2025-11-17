@@ -43,6 +43,7 @@ type SalesOrderInput = {
   paidAmount?: number
   notes?: string
   items: Array<Omit<SalesOrderItem, 'id' | 'orderId' | 'lineTotal'> & { lineTotal?: number }>
+  roundFigure?: boolean // Whether to round the total to nearest integer
 }
 
 type PurchaseOrderInput = {
@@ -55,6 +56,7 @@ type PurchaseOrderInput = {
   notes?: string
   items: Array<Omit<PurchaseOrderItem, 'id' | 'orderId' | 'lineTotal'> & { lineTotal?: number }>
   addToInventory?: boolean // Whether items should be added to product inventory
+  roundFigure?: boolean // Whether to round the total to nearest integer
 }
 
 const enqueueChange = async (entity: EntityType, entityId: string, action: SyncAction, payload: unknown) => {
@@ -475,7 +477,8 @@ export const createSalesOrder = async (
   const id = await generateOrderId('sales')
   const timestamp = nowIso()
   const issuedDate = input.issuedDate ?? timestamp
-  const status = input.status ?? 'draft'
+  // Status will be determined after calculating total
+  let status = input.status ?? 'draft'
 
   const items: SalesOrderItem[] = input.items.map((item) => {
     const lineTotal = item.lineTotal ?? item.quantity * item.unitPrice - (item.discount ?? 0)
@@ -516,8 +519,11 @@ export const createSalesOrder = async (
   let cgst: number | undefined = undefined
   let sgst: number | undefined = undefined
   
+  // Import calculateTax if needed (for taxSettings)
+  let calculateTax: any = null
   if (input.taxSettings) {
-    const { calculateTax } = await import('../utils/taxSettings')
+    const taxUtils = await import('../utils/taxSettings')
+    calculateTax = taxUtils.calculateTax
     const taxCalc = calculateTax(subtotalAfterDiscount, input.taxSettings)
     tax = taxCalc.tax
     taxType = input.taxSettings.type
@@ -529,7 +535,40 @@ export const createSalesOrder = async (
     // Legacy orders without taxSettings default to 'gst' type
     taxType = 'gst'
   }
-  const total = subtotalAfterDiscount + tax
+  let total = subtotalAfterDiscount + tax
+
+  // Apply round figure if enabled - add round difference as extra discount
+  if (input.roundFigure) {
+    const roundedTotal = Math.round(total)
+    const roundDifference = total - roundedTotal
+    if (roundDifference > 0) {
+      // Add round difference as extra fixed discount
+      orderDiscount = orderDiscount + roundDifference
+      // Recalculate subtotal after discount with the extra discount
+      const newSubtotalAfterDiscount = Math.max(0, totals.subtotal - orderDiscount)
+      // Recalculate tax on the new discounted subtotal
+      if (input.taxSettings && calculateTax) {
+        const taxCalc = calculateTax(newSubtotalAfterDiscount, input.taxSettings)
+        tax = taxCalc.tax
+        cgst = taxCalc.cgst
+        sgst = taxCalc.sgst
+      } else {
+        const taxRate = input.taxRate ?? 0
+        tax = newSubtotalAfterDiscount * (taxRate / 100)
+      }
+      // Ensure total equals rounded total (may need slight adjustment due to tax recalculation)
+      total = roundedTotal
+    } else {
+      total = roundedTotal
+    }
+  }
+
+  // Determine final status: if fully paid and no status specified, set to 'paid'
+  const paidAmount = input.paidAmount ?? 0
+  let finalStatus = status
+  if (!input.status && paidAmount >= total && total > 0) {
+    finalStatus = 'paid'
+  }
 
   const salesOrder: SalesOrder = {
     id,
@@ -538,7 +577,7 @@ export const createSalesOrder = async (
     updatedAt: timestamp,
     version: 1,
     customerId: input.customerId,
-    status,
+    status: finalStatus,
     issuedDate,
     dueDate: input.dueDate,
     subtotal: totals.subtotal,
@@ -549,7 +588,7 @@ export const createSalesOrder = async (
     cgst,
     sgst,
     total,
-    paidAmount: input.paidAmount ?? 0,
+    paidAmount: paidAmount,
     notes: input.notes,
   }
 
@@ -686,7 +725,8 @@ export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId
   const id = await generateOrderId('purchase')
   const timestamp = nowIso()
   const issuedDate = input.issuedDate ?? timestamp
-  const status = input.status ?? 'draft'
+  // Status will be determined after calculating total
+  let status = input.status ?? 'draft'
 
   const items: PurchaseOrderItem[] = input.items.map((item) => {
     const lineTotal = item.lineTotal ?? item.quantity * item.unitCost
@@ -708,6 +748,21 @@ export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId
     { subtotal: 0 },
   )
 
+  // Apply round figure if enabled - adjust subtotal to account for round difference
+  let finalSubtotal = totals.subtotal
+  let finalTotal = totals.subtotal
+  if (input.roundFigure) {
+    const roundedTotal = Math.round(totals.subtotal)
+    const roundDifference = totals.subtotal - roundedTotal
+    if (roundDifference > 0) {
+      // Subtract round difference from subtotal (acts as discount)
+      finalSubtotal = roundedTotal
+      finalTotal = roundedTotal
+    } else {
+      finalTotal = roundedTotal
+    }
+  }
+
   const purchaseOrder: PurchaseOrder = {
     id,
     tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
@@ -719,9 +774,9 @@ export const createPurchaseOrder = async (input: PurchaseOrderInput & { tenantId
     issuedDate,
     expectedDate: input.expectedDate,
     dueDate: input.dueDate,
-    subtotal: totals.subtotal,
+    subtotal: finalSubtotal,
     tax: 0,
-    total: totals.subtotal,
+    total: finalTotal,
     paidAmount: input.paidAmount ?? 0,
     notes: input.notes,
     addToInventory: input.addToInventory ?? true, // Default to true for backward compatibility
