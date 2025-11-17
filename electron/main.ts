@@ -251,7 +251,7 @@ ipcMain.handle('printer:get-printers', async () => {
     if (!mainWindow) {
       return { success: false, error: 'Main window not available' }
     }
-    const printers = mainWindow.webContents.getPrinters()
+    const printers = await mainWindow.webContents.getPrintersAsync()
     return {
       success: true,
       printers: printers.map((printer: any) => ({
@@ -315,7 +315,7 @@ ipcMain.handle('printer:show-dialog', async () => {
       return { success: false, error: 'Main window not available' }
     }
 
-    const printers = mainWindow.webContents.getPrinters()
+    const printers = await mainWindow.webContents.getPrintersAsync()
     
     if (printers.length === 0) {
       return { success: false, error: 'No printers available' }
