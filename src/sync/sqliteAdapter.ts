@@ -59,10 +59,10 @@ const mapCustomerRow = (row: Record<string, unknown>): Customer => ({
   phone: toOptionalString(row.phone),
   address: toOptionalString(row.address),
   state: toOptionalString(row.state),
-  gst: toOptionalString(row.gst),
+  gst: toOptionalString((row as any).gst),
   notes: toOptionalString(row.notes),
   type: toStringValue(row.type) as Customer['type'],
-})
+} as Customer)
 
 const mapProductRow = (row: Record<string, unknown>): Product => ({
   id: toStringValue(row.id),
@@ -100,12 +100,12 @@ const mapSalesOrderRow = (row: Record<string, unknown>): SalesOrder => ({
   dueDate: toOptionalString(row.dueDate),
   subtotal: toNumberValue(row.subtotal),
   tax: toNumberValue(row.tax),
-  taxType: row.taxType ? (toStringValue(row.taxType) as 'gst' | 'cgst_sgst') : undefined,
-  cgst: row.cgst != null ? toNumberValue(row.cgst) : undefined,
-  sgst: row.sgst != null ? toNumberValue(row.sgst) : undefined,
+  taxType: (row as any).taxType ? (toStringValue((row as any).taxType) as 'gst' | 'cgst_sgst') : undefined,
+  cgst: (row as any).cgst != null ? toNumberValue((row as any).cgst) : undefined,
+  sgst: (row as any).sgst != null ? toNumberValue((row as any).sgst) : undefined,
   total: toNumberValue(row.total),
   notes: toOptionalString(row.notes),
-})
+} as SalesOrder)
 
 const mapSalesOrderItemRow = (row: Record<string, unknown>): SalesOrderItem => ({
   id: toStringValue(row.id),
@@ -129,13 +129,13 @@ const mapPurchaseOrderRow = (row: Record<string, unknown>): PurchaseOrder => ({
   expectedDate: toOptionalString(row.expectedDate),
   subtotal: toNumberValue(row.subtotal),
   tax: toNumberValue(row.tax),
-  taxType: row.taxType ? (toStringValue(row.taxType) as 'gst' | 'cgst_sgst') : undefined,
-  cgst: row.cgst != null ? toNumberValue(row.cgst) : undefined,
-  sgst: row.sgst != null ? toNumberValue(row.sgst) : undefined,
+  taxType: (row as any).taxType ? (toStringValue((row as any).taxType) as 'gst' | 'cgst_sgst') : undefined,
+  cgst: (row as any).cgst != null ? toNumberValue((row as any).cgst) : undefined,
+  sgst: (row as any).sgst != null ? toNumberValue((row as any).sgst) : undefined,
   total: toNumberValue(row.total),
   notes: toOptionalString(row.notes),
   addToInventory: row.addToInventory != null ? toBoolean(toNumberValue(row.addToInventory)) : true, // Default to true if not set
-})
+} as PurchaseOrder)
 
 const mapPurchaseOrderItemRow = (row: Record<string, unknown>): PurchaseOrderItem => ({
   id: toStringValue(row.id),
@@ -278,7 +278,7 @@ const insertCustomers = (db: Database, customers: Customer[]) => {
       customer.phone ?? null,
       customer.address ?? null,
       customer.state ?? null,
-      customer.gst ?? null,
+      (customer as any).gst ?? null,
       customer.notes ?? null,
       customer.type,
     ])
@@ -370,9 +370,9 @@ const insertSalesOrders = (db: Database, salesOrders: SalesOrder[]) => {
       order.discount,
       order.discountType,
       order.tax,
-      order.taxType ?? null,
-      order.cgst ?? null,
-      order.sgst ?? null,
+      (order as any).taxType ?? null,
+      (order as any).cgst ?? null,
+      (order as any).sgst ?? null,
       order.total,
       order.notes ?? null,
     ])
@@ -437,9 +437,9 @@ const insertPurchaseOrders = (db: Database, purchaseOrders: PurchaseOrder[]) => 
       order.expectedDate ?? null,
       order.subtotal,
       order.tax,
-      order.taxType ?? null,
-      order.cgst ?? null,
-      order.sgst ?? null,
+      (order as any).taxType ?? null,
+      (order as any).cgst ?? null,
+      (order as any).sgst ?? null,
       order.total,
       order.notes ?? null,
       order.addToInventory ?? true ? 1 : 0,
@@ -495,7 +495,7 @@ export const snapshotToSqliteZip = async (snapshot: SyncSnapshot) => {
   const sqliteBinary = db.export()
   db.close()
 
-  const archive = zipSync({ 'bookstore-erp.sqlite': sqliteBinary })
+  const archive = zipSync({ 'ponytory-erp.sqlite': sqliteBinary })
   return archive
 }
 

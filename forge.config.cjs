@@ -2,7 +2,7 @@ const { VitePlugin } = require('@electron-forge/plugin-vite')
 
 module.exports = {
   packagerConfig: {
-    executableName: 'bookstore-erp',
+    executableName: 'ponytory-erp',
     // App icon configuration
     // Place your icon files in assets/icons/ directory:
     // - icon.ico (Windows - 256x256 recommended, can contain multiple sizes)
@@ -20,9 +20,22 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        name: 'bookstore_erp',
-        // Icon for Windows installer
+        name: 'ponytory_erp',
+        // Icon for Windows installer, uninstaller, and Control Panel
+        // Make sure icon.ico exists in assets/icons/ directory
         setupIcon: './assets/icons/icon.ico',
+        // Loading GIF shown during installation (optional)
+        // loadingGif: './assets/icons/loading.gif',
+        // Authors/Company name (shown in Control Panel)
+        authors: 'PonyTory ERP',
+        // Description (shown in Control Panel)
+        description: 'Offline-first ERP with Google Drive sync',
+        // App ID for Windows (used in registry and Control Panel)
+        // This helps ensure proper icon display in Control Panel
+        appId: 'com.ponytory.erp',
+        // Certificate file for code signing (optional, for production)
+        // certificateFile: './path/to/certificate.pfx',
+        // certificatePassword: 'password',
       },
     },
     {

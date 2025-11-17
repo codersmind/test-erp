@@ -47,7 +47,7 @@ export const AppLayout = () => {
         {/* Content */}
         <div className="relative z-10 max-w-lg text-white">
           <h1 className="text-4xl font-extrabold tracking-tight">
-            BookStore ERP: Inventory Simplified.
+            PonyTory ERP: Inventory Simplified.
           </h1>
           <p className="mt-4 text-lg font-light opacity-80">
             Streamline your orders, track real-time stock levels, and automate your accounting—all in one place.
@@ -71,7 +71,7 @@ export const AppLayout = () => {
         
         {/* Top Bar for Theme Toggle and Title on Mobile */}
         <div className="absolute top-0 right-0 p-4 flex items-center gap-4 w-full justify-between lg:justify-end">
-            <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white lg:hidden">BookStore ERP</h2>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white lg:hidden">PonyTory ERP</h2>
             <ThemeToggleButton />
         </div>
 
@@ -132,7 +132,7 @@ export const AppLayout = () => {
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-xl font-semibold">BookStore ERP</h1>
+            <h1 className="text-xl font-semibold">PonyTory ERP</h1>
             <SyncStatus />
           </div>
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">

@@ -35,7 +35,7 @@ export const BackgroundSyncManager = () => {
         await triggerSync()
         lastSyncResult.current = 'success'
         if (Notification.permission === 'granted') {
-          new Notification('BookStore ERP', {
+          new Notification('PonyTory ERP', {
             body: 'Background sync completed successfully.',
           })
         }

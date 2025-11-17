@@ -107,7 +107,7 @@ const getKeytar = () => {
   }
 }
 
-const SERVICE_NAME = 'BookStoreERP'
+const SERVICE_NAME = 'PonyToryERP'
 
 ipcMain.handle('secure-storage:get', async (_:any, scope: string) => {
   const instance = getKeytar()
