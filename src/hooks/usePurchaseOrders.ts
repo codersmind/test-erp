@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createPurchaseOrder, listPurchaseOrders, updatePurchaseOrderStatus } from '../db/localDataService'
+import { createPurchaseOrder, listPurchaseOrders, updatePurchaseOrderStatus, updatePurchaseOrderNotes } from '../db/localDataService'
 import type { PurchaseOrder } from '../db/schema'
 
 const PURCHASE_ORDERS_KEY = ['purchaseOrders']
@@ -37,6 +37,18 @@ export const useUpdatePurchaseOrderStatus = () => {
       queryClient.invalidateQueries({ queryKey: PURCHASE_ORDERS_KEY })
       // Invalidate products queries to refresh stock after status change
       queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+}
+
+export const useUpdatePurchaseOrderNotes = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) =>
+      updatePurchaseOrderNotes(id, notes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PURCHASE_ORDERS_KEY })
     },
   })
 }

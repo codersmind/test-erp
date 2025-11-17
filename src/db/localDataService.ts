@@ -620,6 +620,29 @@ export const updateSalesOrderStatus = async (id: string, status: SalesOrder['sta
   return updated
 }
 
+export const updateSalesOrderNotes = async (id: string, notes: string) => {
+  const existing = await db.salesOrders.get(id)
+  if (!existing) {
+    throw new Error(`Sales order ${id} not found`)
+  }
+
+  const timestamp = nowIso()
+  
+  const updated: SalesOrder = {
+    ...existing,
+    notes,
+    updatedAt: timestamp,
+    version: existing.version + 1,
+  }
+
+  await db.transaction('rw', db.salesOrders, db.syncQueue, async () => {
+    await db.salesOrders.put(updated)
+    await enqueueChange('salesOrder', id, 'update', { salesOrder: updated })
+  })
+
+  return updated
+}
+
 export const listPurchaseOrders = () => db.purchaseOrders.orderBy('issuedDate').reverse().toArray()
 
 export const listPurchaseOrdersPaginated = async (
@@ -766,6 +789,29 @@ export const updatePurchaseOrderStatus = async (id: string, status: PurchaseOrde
       }
     }
 
+    await db.purchaseOrders.put(updated)
+    await enqueueChange('purchaseOrder', id, 'update', { purchaseOrder: updated })
+  })
+
+  return updated
+}
+
+export const updatePurchaseOrderNotes = async (id: string, notes: string) => {
+  const existing = await db.purchaseOrders.get(id)
+  if (!existing) {
+    throw new Error(`Purchase order ${id} not found`)
+  }
+
+  const timestamp = nowIso()
+  
+  const updated: PurchaseOrder = {
+    ...existing,
+    notes,
+    updatedAt: timestamp,
+    version: existing.version + 1,
+  }
+
+  await db.transaction('rw', db.purchaseOrders, db.syncQueue, async () => {
     await db.purchaseOrders.put(updated)
     await enqueueChange('purchaseOrder', id, 'update', { purchaseOrder: updated })
   })

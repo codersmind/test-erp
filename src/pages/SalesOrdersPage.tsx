@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Formik, FieldArray } from 'formik'
 
-import { useCreateSalesOrder, useUpdateSalesOrderStatus } from '../hooks/useSalesOrders'
+import { useCreateSalesOrder, useUpdateSalesOrderStatus, useUpdateSalesOrderNotes } from '../hooks/useSalesOrders'
 import { useSalesOrdersPaginated } from '../hooks/useSalesOrdersPaginated'
 import { db } from '../db/database'
 import { ReceiptPreview } from '../components/ReceiptPreview'
@@ -29,7 +29,10 @@ const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
   const [items, setItems] = useState<SalesOrderItem[]>([])
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [showPrint, setShowPrint] = useState(false)
+  const [showNote, setShowNote] = useState(false)
+  const [noteText, setNoteText] = useState(order.notes || '')
   const updateStatus = useUpdateSalesOrderStatus()
+  const updateNotes = useUpdateSalesOrderNotes()
 
   useEffect(() => {
     const loadData = async () => {
@@ -40,6 +43,15 @@ const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
     }
     loadData()
   }, [order.id, order.customerId])
+
+  useEffect(() => {
+    setNoteText(order.notes || '')
+  }, [order.notes])
+
+  const handleSaveNote = async () => {
+    await updateNotes.mutateAsync({ id: order.id, notes: noteText })
+    setShowNote(false)
+  }
 
   return (
     <>
@@ -85,15 +97,58 @@ const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
           </div>
         </td>
         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-          <button
-            type="button"
-            onClick={() => setShowPrint(true)}
-            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-          >
-            Print
-          </button>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowNote(!showNote)}
+              className="text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              {order.notes ? 'Edit Note' : '+ Add Note'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPrint(true)}
+              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              Print
+            </button>
+          </div>
         </td>
       </tr>
+      {showNote && (
+        <tr>
+          <td colSpan={7} className="px-3 py-4">
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Note</label>
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                rows={3}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                placeholder="Add a note to this order..."
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowNote(false)
+                    setNoteText(order.notes || '')
+                  }}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveNote}
+                  disabled={updateNotes.isPending}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+                >
+                  {updateNotes.isPending ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
       {showPrint && items.length > 0 && (
         <tr>
           <td colSpan={7} className="px-3 py-4">
