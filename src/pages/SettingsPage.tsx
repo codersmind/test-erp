@@ -38,6 +38,14 @@ import {
   type CustomPrintFormat,
 } from '../utils/printSettings'
 import {
+  getLogo,
+  saveLogo,
+  deleteLogo,
+  fileToDataUrl,
+  validateImageFile,
+  type LogoData,
+} from '../utils/logoStorage'
+import {
   getPurchaseOrderSettings,
   setPurchaseOrderSettings,
   type PurchaseOrderSettings,
@@ -148,6 +156,8 @@ export const SettingsPage = () => {
   }>>([])
   const [isLoadingPrinters, setIsLoadingPrinters] = useState(false)
   const [isSavingPrinter, setIsSavingPrinter] = useState(false)
+  const [logo, setLogo] = useState<LogoData | null>(null)
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -160,7 +170,22 @@ export const SettingsPage = () => {
     loadOrderSettings()
     loadPrinterSettings()
     loadAvailablePrinters()
+    loadLogo()
   }, [])
+
+  const loadLogo = async () => {
+    const logoData = await getLogo()
+    setLogo(logoData)
+    // Update print settings logo URL if logo exists
+    if (logoData) {
+      const currentSettings = await getPrintSettings()
+      if (!currentSettings.logoUrl || currentSettings.logoUrl !== logoData.dataUrl) {
+        const updatedSettings = { ...currentSettings, logoUrl: logoData.dataUrl, showLogo: true }
+        await setPrintSettings(updatedSettings)
+        setPrintSettingsState(updatedSettings)
+      }
+    }
+  }
 
   const loadPrintSettings = async () => {
     const settings = await getPrintSettings()
@@ -1172,6 +1197,127 @@ export const SettingsPage = () => {
               </div>
             </div>
           )}
+
+          {/* Logo Upload Section */}
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+            <h3 className="text-sm font-semibold">Company Logo</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Upload your company logo to display on invoices. The logo will be synced to Google Drive.
+            </p>
+            <div className="space-y-3">
+              {logo && (
+                <div className="flex items-center gap-4">
+                  <img
+                    src={logo.dataUrl}
+                    alt="Company Logo"
+                    className="h-20 w-auto rounded border border-slate-300 bg-white p-2 dark:border-slate-700"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{logo.fileName}</p>
+                    <p className="text-xs text-slate-500">
+                      Uploaded: {new Date(logo.uploadedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm('Are you sure you want to delete the logo?')) return
+                      setIsUploadingLogo(true)
+                      try {
+                        await deleteLogo()
+                        setLogo(null)
+                        const currentSettings = await getPrintSettings()
+                        const updatedSettings = { ...currentSettings, logoUrl: undefined, showLogo: false }
+                        await setPrintSettings(updatedSettings)
+                        setPrintSettingsState(updatedSettings)
+                      } catch (error) {
+                        alert('Failed to delete logo')
+                        console.error(error)
+                      } finally {
+                        setIsUploadingLogo(false)
+                      }
+                    }}
+                    disabled={isUploadingLogo}
+                    className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                  >
+                    {isUploadingLogo ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  {logo ? 'Replace Logo' : 'Upload Logo'}
+                </label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/svg+xml"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+
+                    const validation = validateImageFile(file)
+                    if (!validation.valid) {
+                      alert(validation.error)
+                      return
+                    }
+
+                    setIsUploadingLogo(true)
+                    try {
+                      const dataUrl = await fileToDataUrl(file)
+                      const logoData: LogoData = {
+                        dataUrl,
+                        fileName: file.name,
+                        mimeType: file.type,
+                        uploadedAt: new Date().toISOString(),
+                      }
+                      await saveLogo(logoData)
+                      setLogo(logoData)
+                      
+                      // Update print settings to use the logo
+                      const currentSettings = await getPrintSettings()
+                      const updatedSettings = { ...currentSettings, logoUrl: dataUrl, showLogo: true }
+                      await setPrintSettings(updatedSettings)
+                      setPrintSettingsState(updatedSettings)
+                    } catch (error) {
+                      alert('Failed to upload logo')
+                      console.error(error)
+                    } finally {
+                      setIsUploadingLogo(false)
+                      // Reset file input
+                      e.target.value = ''
+                    }
+                  }}
+                  disabled={isUploadingLogo}
+                  className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50 dark:text-slate-400 dark:file:bg-blue-900/20 dark:file:text-blue-300"
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Supported formats: PNG, JPEG, GIF, WebP, SVG. Max size: 2MB.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="showLogo"
+                  checked={printSettings.showLogo}
+                  onChange={async (e) => {
+                    const newSettings = { ...printSettings, showLogo: e.target.checked }
+                    setPrintSettingsState(newSettings)
+                    setIsSavingPrint(true)
+                    try {
+                      await setPrintSettings(newSettings)
+                    } finally {
+                      setIsSavingPrint(false)
+                    }
+                  }}
+                  disabled={!logo}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900"
+                />
+                <label htmlFor="showLogo" className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  Show logo on invoices
+                </label>
+              </div>
+            </div>
+          </div>
 
           <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
             <h3 className="text-sm font-semibold">Company Information (Optional)</h3>

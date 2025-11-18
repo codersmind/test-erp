@@ -25,6 +25,9 @@ const DEFAULT_TEMPLATE_HTML = `<!DOCTYPE html>
 <body>
   <div class="invoice">
     <div class="header">
+      {{#if logoUrl}}
+      <img src="{{logoUrl}}" alt="Company Logo" class="logo" />
+      {{/if}}
       {{#if companyName}}
       <h1>{{companyName}}</h1>
       {{/if}}
@@ -169,6 +172,16 @@ body {
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 2px solid #333;
+}
+
+.header .logo {
+  max-height: 80px;
+  max-width: 200px;
+  margin-bottom: 15px;
+  object-fit: contain;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .header h1 {

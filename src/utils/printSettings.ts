@@ -181,6 +181,7 @@ const getPrintStylesForDimensions = (width: number, height: number, fontSize: 's
       font-size: ${sizes.base}; 
     }
     .header { text-align: center; margin-bottom: ${isNarrow ? '10px' : '20px'}; padding-bottom: ${isNarrow ? '10px' : '15px'}; border-bottom: ${isNarrow ? '1px' : '2px'} solid #000; }
+    .header .logo, .header img[alt*="Logo"], .header img[alt*="logo"] { max-height: ${isNarrow ? '40px' : '80px'}; max-width: ${isNarrow ? '120px' : '200px'}; margin-bottom: ${isNarrow ? '8px' : '15px'}; object-fit: contain; display: block; margin-left: auto; margin-right: auto; }
     .header h1 { font-size: ${sizes.header}; margin-bottom: ${isNarrow ? '5px' : '8px'}; }
     .info { ${isNarrow ? 'margin-bottom: 15px;' : 'display: flex; justify-content: space-between; margin-bottom: 20px;'} }
     .info-section { ${isNarrow ? 'margin-bottom: 8px;' : 'flex: 1;'} }

@@ -58,6 +58,16 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
 
     const handlePrint = async () => {
       const settings = await getPrintSettings()
+      
+      // Ensure logo is loaded from storage if showLogo is enabled but logoUrl is missing
+      if (settings.showLogo && !settings.logoUrl) {
+        const { getLogo } = await import('../utils/logoStorage')
+        const logo = await getLogo()
+        if (logo) {
+          settings.logoUrl = logo.dataUrl
+        }
+      }
+      
       const paperSize = selectedPaperSize || settings.defaultPaperSize
       const formatId = paperSize === 'saved' ? selectedFormatId : undefined
       const styles = await getPrintStyles(paperSize, settings.customWidth, settings.customHeight, formatId)
@@ -67,6 +77,14 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
       if (paperSize === 'saved' && formatId) {
         const { getCustomFormat } = await import('../utils/printSettings')
         formatDetails = await getCustomFormat(formatId)
+        // Also check logo for format details
+        if (formatDetails?.showLogo && !formatDetails.logoUrl) {
+          const { getLogo } = await import('../utils/logoStorage')
+          const logo = await getLogo()
+          if (logo) {
+            formatDetails.logoUrl = logo.dataUrl
+          }
+        }
       }
 
       // Check for custom template
@@ -116,6 +134,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
           companyPhone: companyInfo.companyPhone || '',
           companyEmail: companyInfo.companyEmail || '',
           companyGst: companyInfo.companyGst || '',
+          logoUrl: companyInfo.showLogo && companyInfo.logoUrl ? companyInfo.logoUrl : '',
           billToLabel: type === 'sales' ? 'Bill To' : 'Supplier',
           customerName: customerName || supplierName || 'N/A',
           orderDate,
@@ -177,14 +196,14 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         
         // Build header with company info if available
         let headerContent = `
-          <div class="header">
-            ${showLogo && logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height: 50px; margin-bottom: 10px;" />` : ''}
-            ${companyName ? `<h1>${companyName}</h1>` : `<h1>${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
-            ${companyAddress ? `<p style="font-size: 10px; margin: 3px 0;">${companyAddress}</p>` : ''}
-            ${companyPhone ? `<p style="font-size: 10px; margin: 3px 0;">Phone: ${companyPhone}</p>` : ''}
-            ${companyEmail ? `<p style="font-size: 10px; margin: 3px 0;">Email: ${companyEmail}</p>` : ''}
-            ${companyGST ? `<p style="font-size: 10px; margin: 3px 0;">GST: ${companyGST}</p>` : ''}
-            <p style="margin-top: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
+          <div class="header" style="text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 2px solid #333;">
+            ${showLogo && logoUrl ? `<img src="${logoUrl}" alt="Company Logo" style="max-height: 80px; max-width: 200px; margin-bottom: 15px; object-fit: contain; display: block; margin-left: auto; margin-right: auto;" />` : ''}
+            ${companyName ? `<h1 style="font-size: 24px; margin-bottom: 10px;">${companyName}</h1>` : `<h1 style="font-size: 24px; margin-bottom: 10px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>`}
+            ${companyAddress ? `<p style="font-size: 11px; margin: 3px 0;">${companyAddress}</p>` : ''}
+            ${companyPhone ? `<p style="font-size: 11px; margin: 3px 0;">Phone: ${companyPhone}</p>` : ''}
+            ${companyEmail ? `<p style="font-size: 11px; margin: 3px 0;">Email: ${companyEmail}</p>` : ''}
+            ${companyGST ? `<p style="font-size: 11px; margin: 3px 0;">GST: ${companyGST}</p>` : ''}
+            <p style="margin-top: 10px; font-size: 12px;">${type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'} #${order.id.slice(-6)}</p>
           </div>
         `
 
@@ -314,6 +333,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         companyPhone: companyInfo.companyPhone || '',
         companyEmail: companyInfo.companyEmail || '',
         companyGst: companyInfo.companyGst || '',
+        logoUrl: companyInfo.showLogo && companyInfo.logoUrl ? companyInfo.logoUrl : '',
         billToLabel: type === 'sales' ? 'Bill To' : 'Supplier',
         customerName: customerName || supplierName || 'N/A',
         orderDate,
@@ -471,7 +491,19 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
             } : {}}
           >
             <div className="header">
-              <h1>{type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER'}</h1>
+              {printSettings?.showLogo && printSettings?.logoUrl && (
+                <img 
+                  src={printSettings.logoUrl} 
+                  alt="Company Logo" 
+                  className="logo"
+                  style={{ maxHeight: '80px', maxWidth: '200px', marginBottom: '15px', objectFit: 'contain', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}
+                />
+              )}
+              <h1>{printSettings?.companyName || (type === 'sales' ? 'INVOICE' : 'PURCHASE ORDER')}</h1>
+              {printSettings?.companyAddress && <p className="address">{printSettings.companyAddress}</p>}
+              {printSettings?.companyPhone && <p>Phone: {printSettings.companyPhone}</p>}
+              {printSettings?.companyEmail && <p>Email: {printSettings.companyEmail}</p>}
+              {printSettings?.companyGst && <p>GST: {printSettings.companyGst}</p>}
               <p>#{order.id.slice(-6)}</p>
             </div>
 

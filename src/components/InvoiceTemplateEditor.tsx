@@ -1,59 +1,69 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { getInvoiceTemplates, saveInvoiceTemplate, deleteInvoiceTemplate, getDefaultTemplateId, setDefaultTemplateId, initializeDefaultTemplate, resetDefaultTemplate, renderTemplate, type InvoiceTemplate } from '../utils/invoiceTemplate'
+import { getPrintSettings } from '../utils/printSettings'
+import { getLogo } from '../utils/logoStorage'
 
 interface InvoiceTemplateEditorProps {
   isOpen: boolean
   onClose: () => void
 }
 
-// Sample data for preview
-const SAMPLE_TEMPLATE_DATA: Record<string, any> = {
-  type: 'INVOICE',
-  orderId: '123456',
-  companyName: 'Your Company Name',
-  companyAddress: '123 Business Street, City, State 12345',
-  companyPhone: '+1 (555) 123-4567',
-  companyEmail: 'info@company.com',
-  companyGst: '27AAACC1234C1Z5',
-  billToLabel: 'Bill To',
-  customerName: 'John Doe',
-  orderDate: new Date().toLocaleDateString(),
-  dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(), // 30 days from now
-  status: 'confirmed',
-  notes: 'Sample order notes',
-  items: [
-    {
-      productName: 'Product A',
-      quantity: '2',
-      unitPrice: '₹500.00',
-      discount: '₹50.00',
-      lineTotal: '₹950.00',
-    },
-    {
-      productName: 'Product B',
-      quantity: '1',
-      unitPrice: '₹1,200.00',
-      discount: '₹0.00',
-      lineTotal: '₹1,200.00',
-    },
-    {
-      productName: 'Product C',
-      quantity: '3',
-      unitPrice: '₹300.00',
-      discount: '₹30.00',
-      lineTotal: '₹870.00',
-    },
-  ],
-  showDiscount: true,
-  subtotal: '₹3,020.00',
-  discount: '₹80.00',
-  tax: '',
-  cgst: '₹147.00',
-  sgst: '₹147.00',
-  total: '₹3,234.00',
-  paidAmount: '₹1,500.00',
-  dueAmount: '₹1,734.00',
-  footerText: 'Thank you for your business!',
+// Sample data for preview - will be enhanced with logo
+const getSampleTemplateData = async (): Promise<Record<string, any>> => {
+  const [printSettings, logo] = await Promise.all([
+    getPrintSettings(),
+    getLogo()
+  ])
+  
+  return {
+    type: 'INVOICE',
+    orderId: '123456',
+    companyName: printSettings.companyName || 'Your Company Name',
+    companyAddress: printSettings.companyAddress || '123 Business Street, City, State 12345',
+    companyPhone: printSettings.companyPhone || '+1 (555) 123-4567',
+    companyEmail: printSettings.companyEmail || 'info@company.com',
+    companyGst: printSettings.companyGst || '27AAACC1234C1Z5',
+    logoUrl: (printSettings.showLogo && printSettings.logoUrl) || (logo?.dataUrl || ''),
+    billToLabel: 'Bill To',
+    customerName: 'John Doe',
+    orderDate: new Date().toLocaleDateString(),
+    dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(), // 30 days from now
+    status: 'confirmed',
+    notes: 'Sample order notes',
+    items: [
+      {
+        productName: 'Product A',
+        quantity: '2',
+        unitPrice: '₹500.00',
+        discount: '₹50.00',
+        lineTotal: '₹950.00',
+      },
+      {
+        productName: 'Product B',
+        quantity: '1',
+        unitPrice: '₹1,200.00',
+        discount: '₹0.00',
+        lineTotal: '₹1,200.00',
+      },
+      {
+        productName: 'Product C',
+        quantity: '3',
+        unitPrice: '₹300.00',
+        discount: '₹30.00',
+        lineTotal: '₹870.00',
+      },
+    ],
+    showDiscount: true,
+    subtotal: '₹3,020.00',
+    discount: '₹80.00',
+    tax: '',
+    cgst: '₹147.00',
+    sgst: '₹147.00',
+    total: '₹3,234.00',
+    paidAmount: '₹1,500.00',
+    dueAmount: '₹1,734.00',
+    footerText: printSettings.footerText || 'Thank you for your business!',
+  }
 }
 
 interface TemplatePreviewProps {
@@ -62,22 +72,33 @@ interface TemplatePreviewProps {
 }
 
 const TemplatePreview = ({ html, css }: TemplatePreviewProps) => {
-  const previewHtml = useMemo(() => {
-    try {
-      const tempTemplate: InvoiceTemplate = {
-        id: 'preview',
-        name: 'Preview',
-        html,
-        css,
-        isDefault: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+  const [previewHtml, setPreviewHtml] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const renderPreview = async () => {
+      setIsLoading(true)
+      try {
+        const tempTemplate: InvoiceTemplate = {
+          id: 'preview',
+          name: 'Preview',
+          html,
+          css,
+          isDefault: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        const sampleData = await getSampleTemplateData()
+        const rendered = renderTemplate(tempTemplate, sampleData)
+        setPreviewHtml(rendered)
+      } catch (error) {
+        console.error('Preview render error:', error)
+        setPreviewHtml(`<div style="padding: 20px; color: red;">Error rendering preview: ${error instanceof Error ? error.message : 'Unknown error'}</div>`)
+      } finally {
+        setIsLoading(false)
       }
-      return renderTemplate(tempTemplate, SAMPLE_TEMPLATE_DATA)
-    } catch (error) {
-      console.error('Preview render error:', error)
-      return `<div style="padding: 20px; color: red;">Error rendering preview: ${error instanceof Error ? error.message : 'Unknown error'}</div>`
     }
+    renderPreview()
   }, [html, css])
 
   return (
@@ -89,13 +110,19 @@ const TemplatePreview = ({ html, css }: TemplatePreviewProps) => {
         </p>
       </div>
       <div className="rounded-lg border border-slate-300 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <div
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
-          className="invoice-preview"
-          style={{ 
-            maxWidth: '100%',
-          }}
-        />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <p className="text-sm text-slate-500">Loading preview...</p>
+          </div>
+        ) : (
+          <div
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+            className="invoice-preview"
+            style={{ 
+              maxWidth: '100%',
+            }}
+          />
+        )}
         <style>{`
           .invoice-preview {
             background-color: #ffffff !important;

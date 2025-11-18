@@ -39,6 +39,19 @@ const mergeCollections = <T extends VersionedEntity>(local: T[], remote: T[]): T
 }
 
 export const mergeSnapshots = (local: SyncSnapshot, remote: SyncSnapshot): SyncSnapshot => {
+  // For logo, prefer remote if it exists and is newer, otherwise use local
+  let logo = local.logo || null
+  if (remote.logo) {
+    if (!local.logo) {
+      logo = remote.logo
+    } else {
+      // Use the one with the latest uploadedAt timestamp
+      const localTime = local.logo.uploadedAt ? Date.parse(local.logo.uploadedAt) : 0
+      const remoteTime = remote.logo.uploadedAt ? Date.parse(remote.logo.uploadedAt) : 0
+      logo = remoteTime > localTime ? remote.logo : local.logo
+    }
+  }
+  
   return {
     exportedAt: nowIso(),
     customers: mergeCollections<Customer>(local.customers, remote.customers),
@@ -49,6 +62,7 @@ export const mergeSnapshots = (local: SyncSnapshot, remote: SyncSnapshot): SyncS
     purchaseOrderItems: mergeCollections<PurchaseOrderItem>(local.purchaseOrderItems, remote.purchaseOrderItems),
     // Preserve local unsynced events; remote queue represents historical uploads.
     syncQueue: local.syncQueue,
+    logo,
   }
 }
 
@@ -61,5 +75,11 @@ export const applySnapshotToLocal = async (snapshot: SyncSnapshot) => {
     await db.purchaseOrders.bulkPut(snapshot.purchaseOrders)
     await db.purchaseOrderItems.bulkPut(snapshot.purchaseOrderItems)
   })
+  
+  // Apply logo if present
+  if (snapshot.logo) {
+    const { saveLogo } = await import('../utils/logoStorage')
+    await saveLogo(snapshot.logo)
+  }
 }
 

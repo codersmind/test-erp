@@ -12,6 +12,7 @@ import type {
 } from '../db/schema'
 import { nowIso } from '../db/utils'
 import type { SyncSnapshot } from './googleDriveClient'
+import type { LogoData } from '../utils/logoStorage'
 
 const wasmUrl = new URL('sql.js/dist/sql-wasm.wasm', import.meta.url).toString()
 
@@ -507,14 +508,21 @@ export const snapshotToSqliteZip = async (snapshot: SyncSnapshot) => {
   const sqliteBinary = db.export()
   db.close()
 
-  const archive = zipSync({ 'ponytory-erp.sqlite': sqliteBinary })
+  // Include logo in the archive if present
+  const archiveFiles: Record<string, Uint8Array> = { 'ponytory-erp.sqlite': sqliteBinary }
+  if (snapshot.logo) {
+    const logoJson = JSON.stringify(snapshot.logo)
+    archiveFiles['logo.json'] = new TextEncoder().encode(logoJson)
+  }
+
+  const archive = zipSync(archiveFiles)
   return archive
 }
 
 export const sqliteZipToSnapshot = async (archive: Uint8Array): Promise<SyncSnapshot> => {
   const SQL = await getSqlModule()
   const unzipped = unzipSync(archive)
-  const [sqliteFile] = Object.keys(unzipped)
+  const sqliteFile = Object.keys(unzipped).find(key => key.endsWith('.sqlite'))
   if (!sqliteFile) {
     throw new Error('Uploaded archive did not contain a SQLite database')
   }
@@ -542,6 +550,18 @@ export const sqliteZipToSnapshot = async (archive: Uint8Array): Promise<SyncSnap
 
   const exportedAt = metadata?.exportedAt ?? nowIso()
 
+  // Extract logo if present in archive
+  let logo: LogoData | null = null
+  const logoFile = Object.keys(unzipped).find(key => key === 'logo.json')
+  if (logoFile) {
+    try {
+      const logoJson = new TextDecoder().decode(unzipped[logoFile])
+      logo = JSON.parse(logoJson) as LogoData
+    } catch (error) {
+      console.error('Failed to parse logo from archive:', error)
+    }
+  }
+
   return {
     exportedAt,
     customers,
@@ -551,6 +571,7 @@ export const sqliteZipToSnapshot = async (archive: Uint8Array): Promise<SyncSnap
     purchaseOrders,
     purchaseOrderItems,
     syncQueue: [] as SyncRecord[],
+    logo,
   }
 }
 

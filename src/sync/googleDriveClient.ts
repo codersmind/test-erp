@@ -4,6 +4,8 @@ import { nowIso } from '../db/utils'
 import { loadSecureToken, saveSecureToken } from '../security/secureStorage'
 import { snapshotToSqliteZip, sqliteZipToSnapshot } from './sqliteAdapter'
 
+import type { LogoData } from '../utils/logoStorage'
+
 export interface SyncSnapshot {
   exportedAt: string
   customers: Customer[]
@@ -13,6 +15,7 @@ export interface SyncSnapshot {
   purchaseOrders: PurchaseOrder[]
   purchaseOrderItems: PurchaseOrderItem[]
   syncQueue: SyncRecord[]
+  logo?: LogoData | null
 }
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
@@ -137,7 +140,7 @@ const updateSyncFile = async (token: string, fileId: string, archive: Uint8Array
 }
 
 export const buildLocalSnapshot = async (): Promise<SyncSnapshot> => {
-  const [customers, products, salesOrders, salesOrderItems, purchaseOrders, purchaseOrderItems, syncQueue] =
+  const [customers, products, salesOrders, salesOrderItems, purchaseOrders, purchaseOrderItems, syncQueue, logo] =
     await Promise.all([
       db.customers.toArray(),
       db.products.toArray(),
@@ -146,6 +149,10 @@ export const buildLocalSnapshot = async (): Promise<SyncSnapshot> => {
       db.purchaseOrders.toArray(),
       db.purchaseOrderItems.toArray(),
       db.syncQueue.toArray(),
+      (async () => {
+        const { getLogo } = await import('../utils/logoStorage')
+        return await getLogo()
+      })(),
     ])
 
   return {
@@ -157,6 +164,7 @@ export const buildLocalSnapshot = async (): Promise<SyncSnapshot> => {
     purchaseOrders,
     purchaseOrderItems,
     syncQueue,
+    logo: logo || null,
   }
 }
 
