@@ -304,15 +304,48 @@ export const saveInvoiceTemplate = async (template: Omit<InvoiceTemplate, 'id' |
 }
 
 export const deleteInvoiceTemplate = async (id: string): Promise<void> => {
+  const defaultId = await getDefaultTemplateId()
+  if (defaultId === id) {
+    throw new Error('Cannot delete the default template. Please reset it instead or set another template as default first.')
+  }
+  
   const templates = await getInvoiceTemplates()
   const updatedTemplates = templates.filter(t => t.id !== id)
   await set(INVOICE_TEMPLATES_KEY, updatedTemplates)
-  
-  // If deleted template was default, clear default
+}
+
+export const resetDefaultTemplate = async (): Promise<InvoiceTemplate> => {
   const defaultId = await getDefaultTemplateId()
-  if (defaultId === id) {
-    await set(DEFAULT_TEMPLATE_ID_KEY, null)
+  if (!defaultId) {
+    // If no default template exists, create one
+    return await initializeDefaultTemplate()
   }
+  
+  const templates = await getInvoiceTemplates()
+  const defaultTemplate = templates.find(t => t.id === defaultId)
+  
+  if (!defaultTemplate) {
+    // Default template was deleted somehow, create a new one
+    const newDefault = await saveInvoiceTemplate({
+      name: 'Default Template',
+      html: DEFAULT_TEMPLATE_HTML,
+      css: DEFAULT_TEMPLATE_CSS,
+      isDefault: true,
+    })
+    await setDefaultTemplateId(newDefault.id)
+    return newDefault
+  }
+  
+  // Reset the default template to original content
+  const resetTemplate = await saveInvoiceTemplate({
+    id: defaultTemplate.id,
+    name: 'Default Template',
+    html: DEFAULT_TEMPLATE_HTML,
+    css: DEFAULT_TEMPLATE_CSS,
+    isDefault: true,
+  })
+  
+  return resetTemplate
 }
 
 export const getDefaultTemplateId = async (): Promise<string | null> => {
@@ -356,37 +389,140 @@ export const renderTemplate = (template: InvoiceTemplate, data: Record<string, a
   // Replace CSS placeholder
   html = html.replace(/\{\{CSS\}\}/g, template.css)
   
-  // Replace simple variables
-  Object.keys(data).forEach(key => {
-    const value = data[key]
-    if (typeof value === 'string' || typeof value === 'number') {
-      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value))
-    }
-  })
+  // Replace simple variables (including ../parent references)
+  const replaceVariables = (text: string, context: Record<string, any> = data): string => {
+    let result = text
+    // Replace ../parent variables first
+    result = result.replace(/\{\{\s*\.\.\/(\w+)\s*\}\}/g, (_match, varName) => {
+      return String(context[varName] || '')
+    })
+    // Replace regular variables
+    Object.keys(context).forEach(key => {
+      const value = context[key]
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), String(value))
+      }
+    })
+    return result
+  }
   
-  // Handle conditional blocks {{#if variable}}...{{/if}}
-  html = html.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_match, varName, content) => {
-    return data[varName] ? content : ''
-  })
-  
-  // Handle each loops {{#each items}}...{{/each}}
+  // Handle each loops {{#each items}}...{{/each}} (process before conditionals to handle nested ../)
   html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, arrayName, content) => {
     const items = data[arrayName] || []
     return items.map((item: any) => {
       let itemHtml = content
       // Replace item variables
       Object.keys(item).forEach(key => {
-        itemHtml = itemHtml.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(item[key] || ''))
+        itemHtml = itemHtml.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), String(item[key] || ''))
       })
-      // Replace ../parent variables
-      Object.keys(data).forEach(key => {
-        if (key !== arrayName) {
-          itemHtml = itemHtml.replace(new RegExp(`\\{\\{\\.\\./${key}\\}\\}`, 'g'), String(data[key] || ''))
-        }
-      })
+      // Replace ../parent variables (access parent context)
+      itemHtml = replaceVariables(itemHtml, data)
       return itemHtml
     }).join('')
   })
+  
+  // Helper function to resolve variable name (handles ../variable syntax)
+  const resolveVariable = (varName: string, context: Record<string, any> = data): any => {
+    // Handle ../variable syntax (parent context)
+    if (varName.startsWith('../')) {
+      const actualVarName = varName.substring(3) // Remove '../'
+      return context[actualVarName]
+    }
+    return context[varName]
+  }
+  
+  // Helper function to check if a condition is truthy
+  const isTruthy = (value: any): boolean => {
+    if (value === null || value === undefined) return false
+    if (typeof value === 'string') return value.length > 0
+    if (typeof value === 'number') return value !== 0
+    if (typeof value === 'boolean') return value
+    return true
+  }
+  
+  // Handle conditional blocks with else/else if support
+  // Process from innermost to outermost by finding all if blocks
+  let changed = true
+  let iterations = 0
+  while (changed && iterations < 10) {
+    changed = false
+    iterations++
+    
+    // Find the innermost {{#if}} block (supports ../variable syntax)
+    // Pattern: {{#if variable}} or {{#if ../variable}}
+    const ifBlockRegex = /\{\{#if\s+([\w\/\.]+)\}\}([\s\S]*?)\{\{\/if\}\}/g
+    html = html.replace(ifBlockRegex, (match, varName, content) => {
+      // Check if this block contains another if (if so, skip for now)
+      if (/\{\{#if\s+[\w\/\.]+\}\}/.test(content)) {
+        return match
+      }
+      
+      changed = true
+      
+      // Split content by else/else if markers to find all blocks
+      const parts: Array<{ type: 'if' | 'elseif' | 'else'; condition?: string; content: string }> = []
+      
+      // Extract main if content (before any else/else if)
+      const mainIfEnd = content.search(/\{\{else\s+if|\{\{else\}\}/)
+      if (mainIfEnd === -1) {
+        // No else/else if, just main content
+        parts.push({ type: 'if', condition: varName.trim(), content })
+      } else {
+        parts.push({ type: 'if', condition: varName.trim(), content: content.substring(0, mainIfEnd) })
+        
+        // Extract else if and else blocks (supports ../variable in else if)
+        let remaining = content.substring(mainIfEnd)
+        // Updated regex to support ../variable in else if
+        const elseIfRegex = /\{\{else\s+if\s+([\w\/\.]+)\}\}([\s\S]*?)(?=\{\{else\s+if|\{\{else\}\}|\{\{\/if\}\}|$)/g
+        const elseRegex = /\{\{else\}\}([\s\S]*?)(?=\{\{\/if\}\}|$)/
+        
+        // Find all else if blocks
+        let elseIfMatch
+        while ((elseIfMatch = elseIfRegex.exec(remaining)) !== null) {
+          parts.push({
+            type: 'elseif',
+            condition: elseIfMatch[1].trim(),
+            content: elseIfMatch[2]
+          })
+          remaining = remaining.substring(elseIfMatch.index + elseIfMatch[0].length)
+        }
+        
+        // Find else block
+        const elseMatch = remaining.match(elseRegex)
+        if (elseMatch) {
+          parts.push({
+            type: 'else',
+            content: elseMatch[1]
+          })
+        }
+      }
+      
+      // Evaluate conditions in order
+      for (const part of parts) {
+        if (part.type === 'if') {
+          const value = resolveVariable(part.condition!, data)
+          if (isTruthy(value)) {
+            return replaceVariables(part.content)
+          }
+        }
+        if (part.type === 'elseif') {
+          const value = resolveVariable(part.condition!, data)
+          if (isTruthy(value)) {
+            return replaceVariables(part.content)
+          }
+        }
+        if (part.type === 'else') {
+          return replaceVariables(part.content)
+        }
+      }
+      
+      // No condition matched, return empty
+      return ''
+    })
+  }
+  
+  // Replace remaining variables
+  html = replaceVariables(html)
   
   return html
 }

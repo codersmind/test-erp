@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getInvoiceTemplates, saveInvoiceTemplate, deleteInvoiceTemplate, getDefaultTemplateId, setDefaultTemplateId, initializeDefaultTemplate, renderTemplate, type InvoiceTemplate } from '../utils/invoiceTemplate'
+import { getInvoiceTemplates, saveInvoiceTemplate, deleteInvoiceTemplate, getDefaultTemplateId, setDefaultTemplateId, initializeDefaultTemplate, resetDefaultTemplate, renderTemplate, type InvoiceTemplate } from '../utils/invoiceTemplate'
 
 interface InvoiceTemplateEditorProps {
   isOpen: boolean
@@ -145,6 +145,7 @@ export const InvoiceTemplateEditor = ({ isOpen, onClose }: InvoiceTemplateEditor
   const [templateCss, setTemplateCss] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
   const [defaultTemplateId, setDefaultTemplateIdState] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
 
@@ -259,11 +260,38 @@ body {
     try {
       await deleteInvoiceTemplate(selectedTemplate.id)
       await loadTemplates()
+      // Clear selection if deleted template was selected
+      if (selectedTemplate.id === defaultTemplateId) {
+        setSelectedTemplate(null)
+        setTemplateName('')
+        setTemplateHtml('')
+        setTemplateCss('')
+      }
     } catch (error) {
       console.error('Failed to delete template:', error)
-      alert('Failed to delete template')
+      alert(error instanceof Error ? error.message : 'Failed to delete template')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleResetDefault = async () => {
+    if (!selectedTemplate || defaultTemplateId !== selectedTemplate.id) return
+    if (!window.confirm('Are you sure you want to reset the default template to its original state? All your customizations will be lost.')) return
+
+    setIsResetting(true)
+    try {
+      const resetTemplate = await resetDefaultTemplate()
+      await loadTemplates()
+      setSelectedTemplate(resetTemplate)
+      setTemplateName(resetTemplate.name)
+      setTemplateHtml(resetTemplate.html)
+      setTemplateCss(resetTemplate.css)
+    } catch (error) {
+      console.error('Failed to reset template:', error)
+      alert('Failed to reset template')
+    } finally {
+      setIsResetting(false)
     }
   }
 
@@ -410,7 +438,7 @@ body {
         </div>
 
         <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
-          <div className="flex justify-between">
+            <div className="flex justify-between">
             <div className="flex gap-2">
               {selectedTemplate && (
                 <>
@@ -422,14 +450,25 @@ body {
                   >
                     Set as Default
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-900/20"
-                  >
-                    {isDeleting ? 'Deleting...' : 'Delete'}
-                  </button>
+                  {defaultTemplateId === selectedTemplate.id ? (
+                    <button
+                      type="button"
+                      onClick={handleResetDefault}
+                      disabled={isResetting}
+                      className="rounded-md border border-orange-300 bg-white px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:bg-slate-800 dark:text-orange-300 dark:hover:bg-orange-900/20"
+                    >
+                      {isResetting ? 'Resetting...' : 'Reset to Default'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-900/20"
+                    >
+                      {isDeleting ? 'Deleting...' : 'Delete'}
+                    </button>
+                  )}
                 </>
               )}
             </div>
