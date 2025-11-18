@@ -24,13 +24,30 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        // iconUrl: 'assets/icon.ico', // Windows installer icon
-        iconUrl: 'https://raw.githubusercontent.com/codersmind/murf-desktop-app/refs/heads/main/icon.ico', // Windows installer icon
-        setupIcon: './assets/icons/icon.ico', // Windows installer icon
-        // certificateFile: process.env.CSC_LINK, // Path to .p12/.pfx
-        // certificatePassword: process.env.CSC_KEY_PASSWORD, // Password
+        // Package ID (must not contain spaces - used internally by NuGet)
         name: 'ponytory-erp',
+        
+        // Icon URL for Control Panel display (must be remote HTTP/HTTPS URL)
+        iconUrl: 'https://raw.githubusercontent.com/codersmind/murf-desktop-app/refs/heads/main/icon.ico',
+        
+        // Icon for the installer executable
+        setupIcon: './assets/icons/icon.ico',
+        
+        // Loading GIF shown during installation
         loadingGif: './assets/icons/loading.gif',
+        
+        // Authors/Company name (shown in Control Panel)
+        authors: 'PonyTory ERP',
+        
+        // Description (shown in Control Panel)
+        description: 'Offline-first ERP with Google Drive sync',
+        
+        // App ID for Windows (used in registry and Control Panel)
+        appId: 'com.ponytory.erp',
+        
+        // Certificate file for code signing (optional, for production)
+        // certificateFile: process.env.CSC_LINK,
+        // certificatePassword: process.env.CSC_KEY_PASSWORD,
       },
     },
     {
