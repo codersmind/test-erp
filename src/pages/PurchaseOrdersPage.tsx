@@ -169,6 +169,8 @@ export const PurchaseOrdersPage = () => {
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const createPurchaseOrderMutation = useCreatePurchaseOrder()
   const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void } | null>(null)
+  const isSearchingRef = useRef<Record<number, boolean>>({})
+  const originalProductIdRef = useRef<Record<number, string>>({})
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -328,24 +330,47 @@ export const PurchaseOrdersPage = () => {
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Product</label>
                     <div className="mt-1">
                       <LazyProductPicker
-                                  value={item.productId || ''}
-                                  onChange={async (productId) => {
-                                    if (!productId) {
-                                      setSelectedProductIndex(index)
-                                      setShowProductModal(true)
-                                      return
-                                    }
-                                    const product = await getProduct(productId)
-                                    if (product) {
-                                      setFieldValue(`lineItems.${index}.productId`, productId)
-                                      setFieldValue(`lineItems.${index}.unitCost`, product.cost)
-                                    }
-                                  }}
+                        value={item.productId || ''}
+                        onChange={async (productId) => {
+                          isSearchingRef.current[index] = false
+                          delete originalProductIdRef.current[index]
+                          if (!productId) {
+                            setFieldValue(`lineItems.${index}.productId`, '')
+                            setFieldValue(`lineItems.${index}.unitCost`, 0)
+                            return
+                          }
+                          const product = await getProduct(productId)
+                          if (product) {
+                            setFieldValue(`lineItems.${index}.productId`, productId)
+                            setFieldValue(`lineItems.${index}.unitCost`, product.cost)
+                            
+                            // Auto-add blank item after product selection
+                            const currentItems = values.lineItems || []
+                            const lastItem = currentItems[currentItems.length - 1]
+                            // Only add if the last item is not empty and current item is the last
+                            if (index === currentItems.length - 1 && (lastItem?.productId)) {
+                              push({ productId: '', quantity: 1, unitCost: 0 })
+                            }
+                          }
+                        }}
+                        onSearchStart={() => {
+                          const currentItem = lineItems[index]
+                          if (currentItem?.productId) {
+                            originalProductIdRef.current[index] = currentItem.productId
+                          }
+                          isSearchingRef.current[index] = true
+                        }}
+                        onSearchEnd={() => {
+                          isSearchingRef.current[index] = false
+                          setTimeout(() => {
+                            delete originalProductIdRef.current[index]
+                          }, 100)
+                        }}
                         onQuickCreate={() => {
                           setSelectedProductIndex(index)
                           setShowProductModal(true)
                         }}
-                        placeholder="Search products..."
+                        placeholder="Type or click to select an item"
                       />
                     </div>
                   </div>

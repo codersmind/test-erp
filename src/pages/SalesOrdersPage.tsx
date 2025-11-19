@@ -529,8 +529,10 @@ export const SalesOrdersPage = () => {
                                     }, 100)
                                   }}
                                   onQuickCreate={() => {
+                                    console.log('onQuickCreate');
                                     setSelectedProductIndex(index)
                                     setShowProductModal(true)
+                                    
                                   }}
                                   placeholder="Search products..."
                                 />
