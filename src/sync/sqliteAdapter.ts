@@ -548,7 +548,7 @@ const insertPurchaseOrderItems = (db: Database, items: PurchaseOrderItem[]) => {
 
 const insertInvoices = (db: Database, invoices: Invoice[]) => {
   const stmt = db.prepare(
-    `INSERT INTO invoices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO invoices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       tenantId=excluded.tenantId,
       createdAt=excluded.createdAt,
       updatedAt=excluded.updatedAt,

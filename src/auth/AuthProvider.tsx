@@ -33,6 +33,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const provider = new GoogleAuthProvider()
+provider.setCustomParameters({ app_name: 'PonyTory' })
 provider.addScope('https://www.googleapis.com/auth/drive.file')
 provider.setCustomParameters({
   prompt: 'select_account consent',
