@@ -38,6 +38,15 @@ import {
   type CustomPrintFormat,
 } from '../utils/printSettings'
 import {
+  getBarcodePaperSettings,
+  addBarcodePaperSize,
+  updateBarcodePaperSize,
+  deleteBarcodePaperSize,
+  setBarcodeFormat,
+  type BarcodePaperSize,
+  type BarcodeFormat,
+} from '../utils/barcodePaperSettings'
+import {
   getLogo,
   saveLogo,
   deleteLogo,
@@ -134,6 +143,20 @@ export const SettingsPage = () => {
   })
   const [editingFormatId, setEditingFormatId] = useState<string | null>(null)
   const [isSavingFormat, setIsSavingFormat] = useState(false)
+  const [barcodePaperSizes, setBarcodePaperSizes] = useState<BarcodePaperSize[]>([])
+  const [barcodeFormat, setBarcodeFormatState] = useState<BarcodeFormat>('CODE128')
+  const [isSavingBarcodeFormat, setIsSavingBarcodeFormat] = useState(false)
+  const [barcodePaperForm, setBarcodePaperForm] = useState<Omit<BarcodePaperSize, 'id'>>({
+    name: '',
+    width: 210,
+    height: 297,
+    cols: 3,
+    rows: 8,
+    labelWidth: 63,
+    labelHeight: 33,
+  })
+  const [editingBarcodePaperId, setEditingBarcodePaperId] = useState<string | null>(null)
+  const [isSavingBarcodePaper, setIsSavingBarcodePaper] = useState(false)
   const [purchaseOrderSettings, setPurchaseOrderSettingsState] = useState<PurchaseOrderSettings>({
     defaultAddToInventory: true,
   })
@@ -166,6 +189,7 @@ export const SettingsPage = () => {
     loadUnits()
     loadOrderIdSettings()
     loadPrintSettings()
+    loadBarcodePaperSizes()
     loadPurchaseOrderSettings()
     loadOrderSettings()
     loadPrinterSettings()
@@ -190,6 +214,12 @@ export const SettingsPage = () => {
   const loadPrintSettings = async () => {
     const settings = await getPrintSettings()
     setPrintSettingsState(settings)
+  }
+
+  const loadBarcodePaperSizes = async () => {
+    const settings = await getBarcodePaperSettings()
+    setBarcodePaperSizes(settings.paperSizes)
+    setBarcodeFormatState(settings.defaultFormat || 'CODE128')
   }
 
   const loadPurchaseOrderSettings = async () => {
@@ -1513,6 +1543,295 @@ export const SettingsPage = () => {
             </div>
           </section>
         )}
+
+        {/* Barcode Paper Sizes */}
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+          <h2 className="text-lg font-semibold">Barcode Settings</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            Manage barcode format and paper sizes for barcode printing. Create custom formats for your label sheets.
+          </p>
+
+          <div className="mt-6 space-y-6">
+            {/* Barcode Format Selection */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+              <h3 className="text-sm font-semibold mb-3">Barcode Format</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
+                    Default Barcode Format
+                  </label>
+                  <select
+                    value={barcodeFormat}
+                    onChange={async (e) => {
+                      const newFormat = e.target.value as BarcodeFormat
+                      setBarcodeFormatState(newFormat)
+                      setIsSavingBarcodeFormat(true)
+                      try {
+                        await setBarcodeFormat(newFormat)
+                      } catch (error) {
+                        alert(error instanceof Error ? error.message : 'Failed to save barcode format')
+                        // Revert on error
+                        const settings = await getBarcodePaperSettings()
+                        setBarcodeFormatState(settings.defaultFormat || 'CODE128')
+                      } finally {
+                        setIsSavingBarcodeFormat(false)
+                      }
+                    }}
+                    disabled={isSavingBarcodeFormat}
+                    className="w-full max-w-md rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    <option value="CODE128">CODE128 - Alphanumeric, most flexible</option>
+                    <option value="EAN13">EAN13 - 13 digits, retail products</option>
+                    <option value="EAN8">EAN8 - 8 digits, small products</option>
+                    <option value="UPC">UPC - 12 digits, US retail</option>
+                    <option value="CODE39">CODE39 - Alphanumeric, older standard</option>
+                    <option value="ITF14">ITF14 - 14 digits, shipping containers</option>
+                    <option value="MSI">MSI - Numeric, inventory</option>
+                    <option value="pharmacode">Pharmacode - Numeric, pharmaceutical</option>
+                    <option value="codabar">Codabar - Numeric + special chars, libraries</option>
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    {barcodeFormat === 'CODE128' && 'Supports any alphanumeric characters. Best for custom product codes.'}
+                    {barcodeFormat === 'EAN13' && 'Requires exactly 13 digits. Used for retail products worldwide.'}
+                    {barcodeFormat === 'EAN8' && 'Requires exactly 8 digits. Used for small retail products.'}
+                    {barcodeFormat === 'UPC' && 'Requires exactly 12 digits. Used in US retail stores.'}
+                    {barcodeFormat === 'CODE39' && 'Supports alphanumeric characters. Older standard, less compact.'}
+                    {barcodeFormat === 'ITF14' && 'Requires exactly 14 digits. Used for shipping containers.'}
+                    {barcodeFormat === 'MSI' && 'Numeric only. Used for inventory management.'}
+                    {barcodeFormat === 'pharmacode' && 'Numeric only. Used in pharmaceutical industry.'}
+                    {barcodeFormat === 'codabar' && 'Numeric and some special characters. Used in libraries and blood banks.'}
+                    {isSavingBarcodeFormat && <span className="ml-2">Saving...</span>}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Paper Sizes Section */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Paper Sizes</h3>
+              {/* Add/Edit Paper Size Form */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+              <h3 className="text-sm font-semibold mb-3">
+                {editingBarcodePaperId ? `Edit Paper Size: ${barcodePaperForm.name}` : 'Add New Paper Size'}
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={barcodePaperForm.name}
+                    onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., A4 Label Sheet, Custom 100x50"
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Paper Width (mm)</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="500"
+                      value={barcodePaperForm.width}
+                      onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, width: Number.parseInt(e.target.value) || 210 }))}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Paper Height (mm)</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="1000"
+                      value={barcodePaperForm.height}
+                      onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, height: Number.parseInt(e.target.value) || 297 }))}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Columns</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={barcodePaperForm.cols}
+                      onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, cols: Number.parseInt(e.target.value) || 1 }))}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Rows</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={barcodePaperForm.rows}
+                      onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, rows: Number.parseInt(e.target.value) || 1 }))}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Label Width (mm)</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="200"
+                      value={barcodePaperForm.labelWidth}
+                      onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, labelWidth: Number.parseInt(e.target.value) || 50 }))}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Label Height (mm)</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="200"
+                      value={barcodePaperForm.labelHeight}
+                      onChange={(e) => setBarcodePaperForm((prev) => ({ ...prev, labelHeight: Number.parseInt(e.target.value) || 30 }))}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!barcodePaperForm.name.trim()) {
+                        alert('Please enter a name')
+                        return
+                      }
+                      setIsSavingBarcodePaper(true)
+                      try {
+                        if (editingBarcodePaperId) {
+                          await updateBarcodePaperSize(editingBarcodePaperId, barcodePaperForm)
+                        } else {
+                          await addBarcodePaperSize(barcodePaperForm)
+                        }
+                        await loadBarcodePaperSizes()
+                        setBarcodePaperForm({
+                          name: '',
+                          width: 210,
+                          height: 297,
+                          cols: 3,
+                          rows: 8,
+                          labelWidth: 63,
+                          labelHeight: 33,
+                        })
+                        setEditingBarcodePaperId(null)
+                      } catch (error) {
+                        alert(error instanceof Error ? error.message : 'Failed to save paper size')
+                      } finally {
+                        setIsSavingBarcodePaper(false)
+                      }
+                    }}
+                    disabled={!barcodePaperForm.name.trim() || isSavingBarcodePaper}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400"
+                  >
+                    {isSavingBarcodePaper ? 'Saving...' : editingBarcodePaperId ? 'Update Paper Size' : 'Add Paper Size'}
+                  </button>
+                  {editingBarcodePaperId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBarcodePaperForm({
+                          name: '',
+                          width: 210,
+                          height: 297,
+                          cols: 3,
+                          rows: 8,
+                          labelWidth: 63,
+                          labelHeight: 33,
+                        })
+                        setEditingBarcodePaperId(null)
+                      }}
+                      className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* List of Paper Sizes */}
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Available Paper Sizes</h3>
+              <div className="space-y-2">
+                {barcodePaperSizes.map((size) => {
+                  const isDefault = ['a4', 'label-50x30', 'label-40x20', 'label-30x20'].includes(size.id)
+                  return (
+                    <div
+                      key={size.id}
+                      className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <div>
+                        <p className="font-semibold text-sm">
+                          {size.name}
+                          {isDefault && (
+                            <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              Default
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Paper: {size.width}mm × {size.height}mm • Grid: {size.cols}×{size.rows} = {size.cols * size.rows} labels • Label: {size.labelWidth}mm × {size.labelHeight}mm
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {!isDefault && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBarcodePaperForm({
+                                  name: size.name,
+                                  width: size.width,
+                                  height: size.height,
+                                  cols: size.cols,
+                                  rows: size.rows,
+                                  labelWidth: size.labelWidth,
+                                  labelHeight: size.labelHeight,
+                                })
+                                setEditingBarcodePaperId(size.id)
+                              }}
+                              className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!window.confirm(`Delete paper size "${size.name}"?`)) return
+                                setIsSavingBarcodePaper(true)
+                                try {
+                                  await deleteBarcodePaperSize(size.id)
+                                  await loadBarcodePaperSizes()
+                                } catch (error) {
+                                  alert(error instanceof Error ? error.message : 'Failed to delete paper size')
+                                } finally {
+                                  setIsSavingBarcodePaper(false)
+                                }
+                              }}
+                              className="rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            </div>
+          </div>
+        </section>
 
         {/* Invoice Template Editor */}
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">

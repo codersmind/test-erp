@@ -13,6 +13,7 @@ import type {
   SyncRecord,
 } from './schema'
 import { DEFAULT_TENANT_ID, nowIso } from './utils'
+import { generateBarcode } from '../utils/barcodeGenerator'
 
 export type CustomerInput = Pick<Customer, 'name' | 'type' | 'email' | 'phone' | 'address' | 'state' | 'gst' | 'notes'>
 
@@ -327,6 +328,12 @@ export const createProduct = async (input: ProductInput & { tenantId?: string })
   // Ensure price is set (for backward compatibility)
   const price = salePrice
   
+  // Auto-generate barcode if not provided
+  let barcode = input.barcode
+  if (!barcode || barcode.trim() === '') {
+    barcode = generateBarcode(id, input.sku)
+  }
+  
   const product: Product = {
     id,
     tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
@@ -334,7 +341,7 @@ export const createProduct = async (input: ProductInput & { tenantId?: string })
     updatedAt: timestamp,
     version: 1,
     sku: input.sku,
-    barcode: input.barcode,
+    barcode: barcode,
     title: input.title,
     mrp: mrp,
     salePrice: salePrice,
@@ -385,10 +392,17 @@ export const updateProduct = async (id: string, input: Partial<ProductInput>) =>
   // Ensure price is set (for backward compatibility)
   const price = salePrice
 
+  // Auto-generate barcode if not provided and product doesn't have one
+  let barcode = input.barcode !== undefined ? input.barcode : existing.barcode
+  if (!barcode || barcode.trim() === '') {
+    barcode = generateBarcode(id, input.sku || existing.sku)
+  }
+
   const timestamp = nowIso()
   const updated: Product = {
     ...existing,
     ...input,
+    barcode: barcode,
     mrp: mrp,
     salePrice: salePrice,
     price: price,

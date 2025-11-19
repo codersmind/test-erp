@@ -4,6 +4,7 @@ import { Formik } from 'formik'
 import { useAdjustProductStock, useCreateProduct, useDeleteProduct } from '../hooks/useProducts'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { ErrorDialog } from '../components/ErrorDialog'
+import { BarcodePrint } from '../components/BarcodePrint'
 import { useProductsPaginated, type ProductSortField, type SortOrder } from '../hooks/useProductsPaginated'
 import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { ProductEditModal } from '../components/ProductEditModal'
@@ -13,6 +14,7 @@ import type { Product } from '../db/schema'
 import { getAllUnits, type Unit } from '../utils/unitSettings'
 import { productSchema } from '../utils/validationSchemas'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { Printer } from 'lucide-react'
 
 // Component to handle barcode scanner inside Formik context
 const BarcodeScannerHandler = ({ onScan }: { onScan: (code: string) => void }) => {
@@ -38,6 +40,7 @@ export const ProductsPage = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [showErrorDialog, setShowErrorDialog] = useState(false)
+  const [productToPrintBarcode, setProductToPrintBarcode] = useState<Product | null>(null)
   const { unitSettings, loadSettings } = useSettingsStore()
 
   useEffect(() => {
@@ -368,7 +371,18 @@ export const ProductsPage = () => {
                       {new Date(product.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-1.5">
+                        {product.barcode && (
+                          <button
+                            type="button"
+                            onClick={() => setProductToPrintBarcode(product)}
+                            className="inline-flex items-center gap-1 rounded-md border border-green-300 bg-green-50 px-2 py-1 text-xs font-semibold text-green-600 transition hover:bg-green-100 dark:border-green-700 dark:bg-green-900/20 dark:text-green-400"
+                            title="Print Barcode"
+                          >
+                            <Printer className="h-3 w-3" />
+                            <span className="hidden sm:inline">Barcode</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleEdit(product)}
@@ -454,6 +468,18 @@ export const ProductsPage = () => {
         title="Cannot Delete Product"
         message={errorMessage || 'An error occurred while deleting the product.'}
       />
+      {productToPrintBarcode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md">
+            <BarcodePrint
+              barcode={productToPrintBarcode.barcode || ''}
+              productTitle={productToPrintBarcode.title}
+              productSku={productToPrintBarcode.sku}
+              onClose={() => setProductToPrintBarcode(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
