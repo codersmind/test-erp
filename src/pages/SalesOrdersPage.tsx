@@ -256,14 +256,7 @@ export const SalesOrdersPage = () => {
               return sum + item.quantity * item.unitPrice - (item.discount || 0)
             }, 0)
 
-            const orderDiscountAmount =
-              values.orderDiscount <= 0
-                ? 0
-                : values.orderDiscountType === 'percentage'
-                  ? subtotal * (values.orderDiscount / 100)
-                  : values.orderDiscount
-
-            const subtotalAfterDiscount = Math.max(0, subtotal - orderDiscountAmount)
+            // Calculate tax on subtotal first (before discount)
             const taxSettingsForCalc: TaxSettings = {
               type: values.type,
               gstRate: values.gstRate,
@@ -272,18 +265,28 @@ export const SalesOrdersPage = () => {
               defaultState: values.defaultState || undefined,
               stateRates: values.stateRates || {},
             }
-            const taxCalculation = calculateTax(subtotalAfterDiscount, taxSettingsForCalc, values.selectedState || undefined)
-            let totalAmount = subtotalAfterDiscount + taxCalculation.tax
+            const taxCalculation = calculateTax(subtotal, taxSettingsForCalc, values.selectedState || undefined)
+            const totalBeforeDiscount = subtotal + taxCalculation.tax
+
+            // Calculate discount on total amount (subtotal + tax)
+            const orderDiscountAmount =
+              values.orderDiscount <= 0
+                ? 0
+                : values.orderDiscountType === 'percentage'
+                  ? totalBeforeDiscount * (values.orderDiscount / 100)
+                  : values.orderDiscount
+
+            let totalAmount = Math.max(0, totalBeforeDiscount - orderDiscountAmount)
             
-            // Apply round figure if checked
-            let finalDiscount = values.orderDiscount || 0
+            // Apply round figure if checked - add round difference to discount
+            let finalDiscount = orderDiscountAmount
             if (values.roundFigure) {
               const roundedTotal = Math.round(totalAmount)
               const roundDifference = totalAmount - roundedTotal
+              totalAmount = roundedTotal
+              // Only add positive round differences to discount (when rounding down)
               if (roundDifference > 0) {
-                // Add the difference as extra discount
-                finalDiscount = (values.orderDiscount || 0) + roundDifference
-                totalAmount = roundedTotal
+                finalDiscount = orderDiscountAmount + roundDifference
               }
             }
 
@@ -415,16 +418,7 @@ export const SalesOrdersPage = () => {
               [lineItems],
             )
 
-            const orderDiscountAmount = useMemo(() => {
-              if ((values.orderDiscount || 0) <= 0) return 0
-              if (values.orderDiscountType === 'percentage') {
-                return subtotal * ((values.orderDiscount || 0) / 100)
-              }
-              return values.orderDiscount || 0
-            }, [subtotal, values.orderDiscount, values.orderDiscountType])
-
-            const subtotalAfterDiscount = Math.max(0, subtotal - orderDiscountAmount)
-
+            // Calculate tax on subtotal first (before discount)
             const taxCalculation = useMemo(() => {
               const taxSettingsForCalc: TaxSettings = {
                 type: values.type,
@@ -434,19 +428,30 @@ export const SalesOrdersPage = () => {
                 defaultState: values.defaultState || undefined,
                 stateRates: values.stateRates || {},
               }
-              return calculateTax(subtotalAfterDiscount, taxSettingsForCalc, values.selectedState || undefined)
-            }, [subtotalAfterDiscount, values])
+              return calculateTax(subtotal, taxSettingsForCalc, values.selectedState || undefined)
+            }, [subtotal, values])
 
-            let totalAmount = subtotalAfterDiscount + taxCalculation.tax
+            const totalBeforeDiscount = subtotal + taxCalculation.tax
+
+            // Calculate discount on total amount (subtotal + tax)
+            const orderDiscountAmount = useMemo(() => {
+              if ((values.orderDiscount || 0) <= 0) return 0
+              if (values.orderDiscountType === 'percentage') {
+                return totalBeforeDiscount * ((values.orderDiscount || 0) / 100)
+              }
+              return values.orderDiscount || 0
+            }, [totalBeforeDiscount, values.orderDiscount, values.orderDiscountType])
+
+            let totalAmount = Math.max(0, totalBeforeDiscount - orderDiscountAmount)
             let roundDifference = 0
             
-            // Apply round figure if checked
+            // Apply round figure if checked - add round difference to discount
             if (values.roundFigure) {
               const roundedTotal = Math.round(totalAmount)
               roundDifference = totalAmount - roundedTotal
-              if (roundDifference > 0) {
-                totalAmount = roundedTotal
-              } else {
+              totalAmount = roundedTotal
+              // Only add positive round differences to discount (when rounding down)
+              if (roundDifference <= 0) {
                 roundDifference = 0
               }
             }
@@ -750,45 +755,6 @@ export const SalesOrdersPage = () => {
                   </span>
                 </div>
 
-                {/* Order Discount */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-slate-600 dark:text-slate-400">Discount</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={values.orderDiscount || ''}
-                      onChange={(event) => setFieldValue('orderDiscount', Number.parseFloat(event.target.value) || 0)}
-                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                      placeholder="0.00"
-                    />
-                    <select
-                      value={values.orderDiscountType}
-                      onChange={(event) => setFieldValue('orderDiscountType', event.target.value as 'amount' | 'percentage')}
-                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    >
-                      <option value="amount">₹</option>
-                      <option value="percentage">%</option>
-                    </select>
-                  </div>
-                  {orderDiscountAmount > 0 && (
-                    <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                      -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
-                    </span>
-                  )}
-                </div>
-
-                {/* Subtotal After Discount */}
-                {orderDiscountAmount > 0 && (
-                  <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
-                    <span className="text-slate-600 dark:text-slate-400">Subtotal after discount</span>
-                    <span className="font-medium text-slate-900 dark:text-slate-50">
-                      {subtotalAfterDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
-                    </span>
-                  </div>
-                )}
-
                 {/* Tax Breakdown */}
                 <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
                   {values.type === 'gst' ? (
@@ -821,6 +787,53 @@ export const SalesOrdersPage = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Total Before Discount */}
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-400">Total Amount</span>
+                  <span className="font-medium text-slate-900 dark:text-slate-50">
+                    {totalBeforeDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                  </span>
+                </div>
+
+                {/* Order Discount (on Total Amount) */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-slate-600 dark:text-slate-400">Total Amount Discount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.orderDiscount || ''}
+                      onChange={(event) => setFieldValue('orderDiscount', Number.parseFloat(event.target.value) || 0)}
+                      className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      placeholder="0.00"
+                    />
+                    <select
+                      value={values.orderDiscountType}
+                      onChange={(event) => setFieldValue('orderDiscountType', event.target.value as 'amount' | 'percentage')}
+                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    >
+                      <option value="amount">₹</option>
+                      <option value="percentage">%</option>
+                    </select>
+                  </div>
+                  {orderDiscountAmount > 0 && (
+                    <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                      -{orderDiscountAmount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                    </span>
+                  )}
+                </div>
+
+                {/* Round Figure Discount */}
+                {values.roundFigure && roundDifference > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600 dark:text-slate-400">Round off discount</span>
+                    <span className="font-medium text-red-600 dark:text-red-400">
+                      -{roundDifference.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                    </span>
+                  </div>
+                )}
 
                 {/* Total */}
                 <div className="mb-4 flex items-center justify-between border-t-2 border-slate-300 pt-3 dark:border-slate-600">

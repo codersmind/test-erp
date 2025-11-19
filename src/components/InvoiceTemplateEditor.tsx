@@ -37,6 +37,8 @@ const getSampleTemplateData = async (): Promise<Record<string, any>> => {
         unitPrice: '₹500.00',
         discount: '₹50.00',
         lineTotal: '₹950.00',
+        mrp: '₹550.00',
+        salePrice: '₹500.00'
       },
       {
         productName: 'Product B',
@@ -44,6 +46,8 @@ const getSampleTemplateData = async (): Promise<Record<string, any>> => {
         unitPrice: '₹1,200.00',
         discount: '₹0.00',
         lineTotal: '₹1,200.00',
+        mrp: '₹1,300.00',
+        salePrice: '₹1,200.00'
       },
       {
         productName: 'Product C',
@@ -51,6 +55,8 @@ const getSampleTemplateData = async (): Promise<Record<string, any>> => {
         unitPrice: '₹300.00',
         discount: '₹30.00',
         lineTotal: '₹870.00',
+        mrp: '₹550.00',
+        salePrice: '₹300.00'
       },
     ],
     showDiscount: true,

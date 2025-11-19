@@ -1,4 +1,5 @@
 import { get, set } from 'idb-keyval'
+import { POS_TEMPLATE_HTML, POS_TEMPLATE_CSS } from './posTemplate'
 
 export interface InvoiceTemplate {
   id: string
@@ -73,9 +74,12 @@ const DEFAULT_TEMPLATE_HTML = `<!DOCTYPE html>
         <tr>
           <th>Item</th>
           <th class="text-right">Qty</th>
-          <th class="text-right">Price</th>
           {{#if showDiscount}}
-          <th class="text-right">Discount</th>
+          <th class="text-right">MRP</th>
+          <th class="text-right">Sale Price</th>
+          <th class="text-right">Item Discount</th>
+          {{else}}
+          <th class="text-right">Price</th>
           {{/if}}
           <th class="text-right">Total</th>
         </tr>
@@ -85,9 +89,21 @@ const DEFAULT_TEMPLATE_HTML = `<!DOCTYPE html>
         <tr>
           <td>{{productName}}</td>
           <td class="text-right">{{quantity}}</td>
-          <td class="text-right">{{unitPrice}}</td>
           {{#if ../showDiscount}}
+          <td class="text-right mrp-cell">
+            {{#if mrp}}
+            <span class="mrp-strikethrough">{{mrp}}</span>
+            {{#if discountPercent}}
+            <br><span class="discount-percent">{{discountPercent}}</span>
+            {{/if}}
+            {{else}}
+            -
+            {{/if}}
+          </td>
+          <td class="text-right">{{salePrice}}</td>
           <td class="text-right">{{discount}}</td>
+          {{else}}
+          <td class="text-right">{{unitPrice}}</td>
           {{/if}}
           <td class="text-right">{{lineTotal}}</td>
         </tr>
@@ -102,7 +118,7 @@ const DEFAULT_TEMPLATE_HTML = `<!DOCTYPE html>
       </div>
       {{#if discount}}
       <div class="totals-row">
-        <span>Discount:</span>
+        <span>Discount (includes round off):</span>
         <span>-{{discount}}</span>
       </div>
       {{/if}}
@@ -159,12 +175,19 @@ body {
   font-size: 12px;
   color: #333;
   padding: 20px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .invoice {
-  max-width: 800px;
+  max-width: 100%;
+  width: 100%;
   margin: 0 auto;
   background: white;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .header {
@@ -202,16 +225,19 @@ body {
 .invoice-title h2 {
   font-size: 20px;
   margin-bottom: 5px;
+  font-weight: bold;
 }
 
 .info-section {
   display: flex;
   justify-content: space-between;
   margin-bottom: 20px;
+  gap: 20px;
 }
 
 .bill-to, .order-details {
   flex: 1;
+  min-width: 0;
 }
 
 .bill-to h3, .order-details h3 {
@@ -219,48 +245,183 @@ body {
   margin-bottom: 10px;
   border-bottom: 1px solid #ccc;
   padding-bottom: 5px;
+  font-weight: bold;
+}
+
+.bill-to p, .order-details p {
+  margin: 4px 0;
+  font-size: 12px;
 }
 
 .items-table {
   width: 100%;
   border-collapse: collapse;
   margin: 20px 0;
+  font-size: 12px;
+  table-layout: fixed;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .items-table th,
 .items-table td {
-  padding: 8px;
+  padding: 8px 6px;
   border-bottom: 1px solid #ddd;
   text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+  overflow: hidden;
 }
 
 .items-table th {
   background-color: #f5f5f5;
   font-weight: bold;
+  font-size: 11px;
+  white-space: normal;
+  border-bottom: 2px solid #333;
+  overflow: hidden;
 }
+
+.items-table td {
+  font-size: 11px;
+  white-space: normal;
+}
+
+/* First column (Item) - always present */
+.items-table th:first-child,
+.items-table td:first-child {
+  padding-left: 8px;
+  width: 25%;
+  max-width: 25%;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Second column (Qty) - always present */
+.items-table th:nth-child(2),
+.items-table td:nth-child(2) {
+  width: 8%;
+  max-width: 8%;
+  overflow: hidden;
+}
+
+/* Third column - varies: MRP (with discount) or Price (without discount) */
+.items-table th:nth-child(3),
+.items-table td:nth-child(3) {
+  width: 12%;
+  max-width: 12%;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Fourth column - varies: Sale Price (with discount) or Total (without discount) */
+.items-table th:nth-child(4),
+.items-table td:nth-child(4) {
+  width: 15%;
+  max-width: 15%;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Fifth column - only when showDiscount: Item Discount */
+.items-table th:nth-child(5),
+.items-table td:nth-child(5) {
+  width: 12%;
+  max-width: 12%;
+  overflow: hidden;
+}
+
+/* Last column (Total) - always present */
+.items-table th:last-child,
+.items-table td:last-child {
+  padding-right: 8px;
+  width: 28%;
+  max-width: 28%;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.items-table .text-right {
+  text-align: right;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.items-table .mrp-cell {
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.items-table .mrp-strikethrough {
+  text-decoration: line-through;
+  color: #666;
+  display: block;
+}
+
+.items-table .discount-percent {
+  color: #2563eb;
+  font-weight: 500;
+  font-size: 10px;
+  display: block;
+  margin-top: 2px;
+}
+
+/* POS Receipt (80mm) and narrow paper specific styles - handled by printSettings.ts */
 
 .text-right {
   text-align: right;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .totals {
   margin-top: 20px;
   border-top: 2px solid #333;
   padding-top: 10px;
+  width: 100%;
 }
 
 .totals-row {
   display: flex;
   justify-content: space-between;
-  margin: 5px 0;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.totals-row span:first-child {
+  font-weight: 500;
+}
+
+.totals-row span:last-child {
+  text-align: right;
+  font-weight: 500;
 }
 
 .totals-row.total {
   font-weight: bold;
   font-size: 16px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #333;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 2px solid #333;
+}
+
+.totals-row.total span {
+  font-weight: bold;
 }
 
 .footer {
@@ -274,6 +435,30 @@ body {
 @media print {
   body {
     padding: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .invoice {
+    max-width: 100%;
+    width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .items-table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+  }
+  
+  .items-table th,
+  .items-table td {
+    overflow: hidden;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
   }
 }`
 
@@ -377,22 +562,106 @@ export const getDefaultTemplate = async (): Promise<InvoiceTemplate | null> => {
   return templates.find(t => t.id === defaultId) || null
 }
 
+// Get template by paper size (POS or A4)
+export const getTemplateByPaperSize = async (paperSize: 'pos' | 'a4' | 'custom' | 'saved'): Promise<InvoiceTemplate | null> => {
+  let templates = await getInvoiceTemplates()
+  
+  // If no templates exist, initialize them
+  if (templates.length === 0) {
+    await initializeDefaultTemplate()
+    templates = await getInvoiceTemplates()
+  }
+  
+  // Normalize paper size for template lookup
+  const normalizedSize = paperSize === 'saved' || paperSize === 'custom' ? 'a4' : paperSize
+  
+  // Look for paper size specific templates first
+  // Check for exact name matches or partial matches
+  let sizeSpecificTemplate = templates.find(t => {
+    const nameLower = t.name.toLowerCase()
+    if (normalizedSize === 'pos') {
+      return nameLower.includes('pos') || nameLower.includes('receipt')
+    } else if (normalizedSize === 'a4') {
+      // For A4, prefer templates that explicitly say A4, but also accept default/template
+      return nameLower.includes('a4') || (nameLower.includes('default') && !nameLower.includes('pos'))
+    }
+    return false
+  })
+  
+  if (sizeSpecificTemplate) {
+    return sizeSpecificTemplate
+  }
+  
+  // If no size-specific template found, ensure templates exist and return appropriate one
+  if (normalizedSize === 'pos') {
+    // Check if we need to create POS template
+    const hasPosTemplate = templates.some(t => {
+      const nameLower = t.name.toLowerCase()
+      return nameLower.includes('pos') || nameLower.includes('receipt')
+    })
+    if (!hasPosTemplate) {
+      // Create POS template
+      const posTemplate = await saveInvoiceTemplate({
+        name: 'POS Receipt Template',
+        html: POS_TEMPLATE_HTML,
+        css: POS_TEMPLATE_CSS,
+        isDefault: false,
+      })
+      return posTemplate
+    }
+  } else if (normalizedSize === 'a4') {
+    // For A4, if no specific template found, create one if needed
+    const hasA4Template = templates.some(t => {
+      const nameLower = t.name.toLowerCase()
+      return nameLower.includes('a4') || (nameLower.includes('default') && !nameLower.includes('pos'))
+    })
+    if (!hasA4Template) {
+      // Create A4 template
+      const a4Template = await saveInvoiceTemplate({
+        name: 'A4 Template',
+        html: DEFAULT_TEMPLATE_HTML,
+        css: DEFAULT_TEMPLATE_CSS,
+        isDefault: true,
+      })
+      await setDefaultTemplateId(a4Template.id)
+      return a4Template
+    }
+  }
+  
+  // Return default template (usually A4)
+  const defaultTemplate = await getDefaultTemplate()
+  if (defaultTemplate) {
+    return defaultTemplate
+  }
+  
+  // Last resort: return first available template
+  return templates.length > 0 ? templates[0] : null
+}
+
 export const initializeDefaultTemplate = async (): Promise<InvoiceTemplate> => {
   const templates = await getInvoiceTemplates()
   if (templates.length > 0) {
     return templates[0]
   }
   
-  // Create default template
-  const defaultTemplate = await saveInvoiceTemplate({
-    name: 'Default Template',
+  // Create A4 template (default)
+  const a4Template = await saveInvoiceTemplate({
+    name: 'A4 Template',
     html: DEFAULT_TEMPLATE_HTML,
     css: DEFAULT_TEMPLATE_CSS,
     isDefault: true,
   })
   
-  await setDefaultTemplateId(defaultTemplate.id)
-  return defaultTemplate
+  // Create POS template
+  await saveInvoiceTemplate({
+    name: 'POS Receipt Template',
+    html: POS_TEMPLATE_HTML,
+    css: POS_TEMPLATE_CSS,
+    isDefault: false,
+  })
+  
+  await setDefaultTemplateId(a4Template.id)
+  return a4Template
 }
 
 // Simple template engine to replace placeholders
@@ -419,21 +688,6 @@ export const renderTemplate = (template: InvoiceTemplate, data: Record<string, a
     return result
   }
   
-  // Handle each loops {{#each items}}...{{/each}} (process before conditionals to handle nested ../)
-  html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, arrayName, content) => {
-    const items = data[arrayName] || []
-    return items.map((item: any) => {
-      let itemHtml = content
-      // Replace item variables
-      Object.keys(item).forEach(key => {
-        itemHtml = itemHtml.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), String(item[key] || ''))
-      })
-      // Replace ../parent variables (access parent context)
-      itemHtml = replaceVariables(itemHtml, data)
-      return itemHtml
-    }).join('')
-  })
-  
   // Helper function to resolve variable name (handles ../variable syntax)
   const resolveVariable = (varName: string, context: Record<string, any> = data): any => {
     // Handle ../variable syntax (parent context)
@@ -452,6 +706,189 @@ export const renderTemplate = (template: InvoiceTemplate, data: Record<string, a
     if (typeof value === 'boolean') return value
     return true
   }
+  
+  // Helper function to find matching closing tag for a {{#if}} block
+  const findMatchingEndIf = (text: string, startPos: number): number => {
+    let depth = 1
+    let pos = startPos
+    const ifStartRegex = /\{\{#if\s+[\w\/\.]+\}\}/g
+    const ifEndRegex = /\{\{\/if\}\}/g
+    
+    // Find the position after the opening {{#if}}
+    const openMatch = text.substring(startPos).match(/\{\{#if\s+[\w\/\.]+\}\}/)
+    if (!openMatch) return -1
+    pos = startPos + openMatch.index! + openMatch[0].length
+    
+    // Now search for matching {{/if}}
+    while (pos < text.length && depth > 0) {
+      // Check for opening {{#if}} first (before checking closing)
+      ifStartRegex.lastIndex = pos
+      const openIf = ifStartRegex.exec(text)
+      ifEndRegex.lastIndex = pos
+      const closeIf = ifEndRegex.exec(text)
+      
+      let nextOpen = openIf ? openIf.index : Infinity
+      let nextClose = closeIf ? closeIf.index : Infinity
+      
+      if (nextClose < nextOpen) {
+        // Found closing tag
+        depth--
+        if (depth === 0) {
+          return nextClose + closeIf![0].length
+        }
+        pos = nextClose + closeIf![0].length
+      } else if (nextOpen < Infinity) {
+        // Found opening tag
+        depth++
+        pos = nextOpen + openIf![0].length
+      } else {
+        break // No more tags found
+      }
+    }
+    
+    return -1 // No matching closing tag found
+  }
+  
+  // Helper function to process conditionals in a given context (recursively processes nested conditionals)
+  const processConditionals = (htmlContent: string, context: Record<string, any>): string => {
+    let result = htmlContent
+    let changed = true
+    let iterations = 0
+    
+    while (changed && iterations < 20) {
+      changed = false
+      iterations++
+      
+      // Find all {{#if}} blocks and process innermost first
+      const ifStartRegex = /\{\{#if\s+([\w\/\.]+)\}\}/g
+      let match
+      const blocks: Array<{ start: number; end: number; varName: string; content: string; fullMatch: string; hasNestedIf: boolean }> = []
+      
+      // Find all if blocks
+      while ((match = ifStartRegex.exec(result)) !== null) {
+        const startPos = match.index
+        const varName = match[1].trim()
+        const endPos = findMatchingEndIf(result, startPos)
+        
+        if (endPos > startPos) {
+          const fullMatch = result.substring(startPos, endPos)
+          const contentStart = startPos + match[0].length
+          const content = result.substring(contentStart, endPos - 7) // -7 for {{/if}}
+          
+          // Check if this block contains another if
+          const hasNestedIf = /\{\{#if\s+[\w\/\.]+\}\}/.test(content)
+          blocks.push({ start: startPos, end: endPos, varName, content, fullMatch, hasNestedIf })
+        }
+      }
+      
+      // Process innermost blocks first (those without nested ifs)
+      const innermostBlocks = blocks.filter(b => !b.hasNestedIf)
+      if (innermostBlocks.length === 0 && blocks.length > 0) {
+        // If all blocks have nested ifs, process the first one anyway (shouldn't happen with proper recursion)
+        break
+      }
+      
+      // Process blocks from end to start to avoid position shifting issues
+      innermostBlocks.sort((a, b) => b.start - a.start)
+      
+      for (const block of innermostBlocks) {
+        changed = true
+        
+        // Resolve variable name (handles ../variable syntax)
+        const value = resolveVariable(block.varName, context)
+        const isTrue = isTruthy(value)
+        
+        // Split content by else/else if markers
+        const parts: Array<{ type: 'if' | 'elseif' | 'else'; condition?: string; content: string }> = []
+        
+        const mainIfEnd = block.content.search(/\{\{else\s+if|\{\{else\}\}/)
+        if (mainIfEnd === -1) {
+          parts.push({ type: 'if', condition: block.varName, content: block.content })
+        } else {
+          parts.push({ type: 'if', condition: block.varName, content: block.content.substring(0, mainIfEnd) })
+          
+          let remaining = block.content.substring(mainIfEnd)
+          const elseIfRegex = /\{\{else\s+if\s+([\w\/\.]+)\}\}([\s\S]*?)(?=\{\{else\s+if|\{\{else\}\}|\{\{\/if\}\}|$)/g
+          const elseRegex = /\{\{else\}\}([\s\S]*?)(?=\{\{\/if\}\}|$)/
+          
+          let elseIfMatch
+          while ((elseIfMatch = elseIfRegex.exec(remaining)) !== null) {
+            parts.push({
+              type: 'elseif',
+              condition: elseIfMatch[1].trim(),
+              content: elseIfMatch[2]
+            })
+            remaining = remaining.substring(elseIfMatch.index + elseIfMatch[0].length)
+          }
+          
+          const elseMatch = remaining.match(elseRegex)
+          if (elseMatch) {
+            parts.push({ type: 'else', content: elseMatch[1] })
+          }
+        }
+        
+        // Evaluate conditions and get appropriate content
+        let replacement = ''
+        for (const part of parts) {
+          if (part.type === 'if') {
+            if (isTrue) {
+              replacement = part.content
+              break
+            }
+          } else if (part.type === 'elseif') {
+            const elseifValue = resolveVariable(part.condition!, context)
+            if (isTruthy(elseifValue)) {
+              replacement = part.content
+              break
+            }
+          } else if (part.type === 'else') {
+            replacement = part.content
+            break
+          }
+        }
+        
+        // Recursively process any nested conditionals in the replacement
+        replacement = processConditionals(replacement, context)
+        
+        // Replace the block in the result
+        result = result.substring(0, block.start) + replacement + result.substring(block.end)
+        
+        // Break to restart the loop (positions have changed)
+        break
+      }
+    }
+    
+    return result
+  }
+  
+  // Handle each loops {{#each items}}...{{/each}} (process before conditionals to handle nested ../)
+  html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, arrayName, content) => {
+    const items = data[arrayName] || []
+    return items.map((item: any) => {
+      // Create a combined context (item + parent data) - item properties override parent
+      const itemContext = { ...data, ...item }
+      
+      let itemHtml = content
+      
+      // First, process ALL nested conditionals recursively in the item context
+      // This will process {{#if ../showDiscount}} and nested {{#if mrp}} blocks
+      itemHtml = processConditionals(itemHtml, itemContext)
+      
+      // Then replace item variables (after conditionals are processed)
+      Object.keys(item).forEach(key => {
+        const value = item[key]
+        if (value !== undefined && value !== null) {
+          itemHtml = itemHtml.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), String(value))
+        }
+      })
+      
+      // Finally replace ../parent variables (access parent context only, not item context)
+      // This handles any remaining ../ references
+      itemHtml = replaceVariables(itemHtml, data)
+      
+      return itemHtml
+    }).join('')
+  })
   
   // Handle conditional blocks with else/else if support
   // Process from innermost to outermost by finding all if blocks

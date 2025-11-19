@@ -501,19 +501,7 @@ export const createSalesOrder = async (
     { subtotal: 0 },
   )
 
-  // Calculate order-level discount
-  let orderDiscount = 0
-  const discountType = input.discountType ?? 'amount'
-  if (input.discount && input.discount > 0) {
-    if (discountType === 'percentage') {
-      orderDiscount = totals.subtotal * (input.discount / 100)
-    } else {
-      orderDiscount = input.discount
-    }
-  }
-  const subtotalAfterDiscount = Math.max(0, totals.subtotal - orderDiscount)
-
-  // Calculate tax using new taxSettings or fallback to legacy taxRate
+  // Calculate tax on subtotal first (before discount)
   let tax = 0
   let taxType: 'gst' | 'cgst_sgst' | undefined = undefined
   let cgst: number | undefined = undefined
@@ -524,42 +512,41 @@ export const createSalesOrder = async (
   if (input.taxSettings) {
     const taxUtils = await import('../utils/taxSettings')
     calculateTax = taxUtils.calculateTax
-    const taxCalc = calculateTax(subtotalAfterDiscount, input.taxSettings)
+    const taxCalc = calculateTax(totals.subtotal, input.taxSettings)
     tax = taxCalc.tax
     taxType = input.taxSettings.type
     cgst = taxCalc.cgst
     sgst = taxCalc.sgst
   } else {
     const taxRate = input.taxRate ?? 0
-    tax = subtotalAfterDiscount * (taxRate / 100)
+    tax = totals.subtotal * (taxRate / 100)
     // Legacy orders without taxSettings default to 'gst' type
     taxType = 'gst'
   }
-  let total = subtotalAfterDiscount + tax
+  
+  const totalBeforeDiscount = totals.subtotal + tax
 
-  // Apply round figure if enabled - add round difference as extra discount
+  // Calculate order-level discount on total amount (subtotal + tax)
+  let orderDiscount = 0
+  const discountType = input.discountType ?? 'amount'
+  if (input.discount && input.discount > 0) {
+    if (discountType === 'percentage') {
+      orderDiscount = totalBeforeDiscount * (input.discount / 100)
+    } else {
+      orderDiscount = input.discount
+    }
+  }
+  
+  let total = Math.max(0, totalBeforeDiscount - orderDiscount)
+
+  // Apply round figure if enabled - add round difference to discount
   if (input.roundFigure) {
     const roundedTotal = Math.round(total)
     const roundDifference = total - roundedTotal
+    total = roundedTotal
+    // Only add positive round differences to discount (when rounding down)
     if (roundDifference > 0) {
-      // Add round difference as extra fixed discount
       orderDiscount = orderDiscount + roundDifference
-      // Recalculate subtotal after discount with the extra discount
-      const newSubtotalAfterDiscount = Math.max(0, totals.subtotal - orderDiscount)
-      // Recalculate tax on the new discounted subtotal
-      if (input.taxSettings && calculateTax) {
-        const taxCalc = calculateTax(newSubtotalAfterDiscount, input.taxSettings)
-        tax = taxCalc.tax
-        cgst = taxCalc.cgst
-        sgst = taxCalc.sgst
-      } else {
-        const taxRate = input.taxRate ?? 0
-        tax = newSubtotalAfterDiscount * (taxRate / 100)
-      }
-      // Ensure total equals rounded total (may need slight adjustment due to tax recalculation)
-      total = roundedTotal
-    } else {
-      total = roundedTotal
     }
   }
 

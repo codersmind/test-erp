@@ -187,11 +187,22 @@ const getPrintStylesForDimensions = (width: number, height: number, fontSize: 's
     .info-section { ${isNarrow ? 'margin-bottom: 8px;' : 'flex: 1;'} }
     .info-section h3 { font-size: ${sizes.base}; margin-bottom: ${isNarrow ? '3px' : '5px'}; font-weight: bold; ${!isNarrow ? 'text-transform: uppercase;' : ''} }
     .info-section p { font-size: ${sizes.base}; margin: ${isNarrow ? '2px' : '3px'} 0; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: ${isNarrow ? '10px' : '15px'}; }
-    table th, table td { padding: ${isNarrow ? '4px 2px' : '6px 4px'}; text-align: left; border-bottom: ${isNarrow ? '1px dashed #ccc' : '1px solid #ddd'}; }
-    table th { font-weight: bold; font-size: ${sizes.table}; ${!isNarrow ? 'background-color: #f5f5f5; text-transform: uppercase;' : ''} }
-    table td { font-size: ${sizes.table}; }
-    .text-right { text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: ${isNarrow ? '10px' : '15px'}; ${isNarrow ? 'table-layout: fixed;' : ''} }
+    table th, table td { padding: ${isNarrow ? '3px 1px' : '6px 4px'}; text-align: left; border-bottom: ${isNarrow ? '1px dashed #ccc' : '1px solid #ddd'}; ${isNarrow ? 'word-wrap: break-word; overflow-wrap: break-word; font-size: 7px;' : ''} }
+    table th { font-weight: bold; font-size: ${sizes.table}; ${!isNarrow ? 'background-color: #f5f5f5; text-transform: uppercase;' : 'white-space: normal; line-height: 1.1;'} }
+    table td { font-size: ${sizes.table}; ${isNarrow ? 'font-size: 7px;' : ''} }
+    .text-right { text-align: right; ${isNarrow ? 'white-space: normal;' : ''} }
+    ${isNarrow ? `
+    table th:first-child, table td:first-child { width: 20%; padding-left: 1px; }
+    table th:nth-child(2), table td:nth-child(2) { width: 8%; }
+    table th:nth-child(3), table td:nth-child(3) { width: 18%; }
+    table th:nth-child(4), table td:nth-child(4) { width: 18%; }
+    table th:nth-child(5), table td:nth-child(5) { width: 18%; }
+    table th:last-child, table td:last-child { width: 18%; padding-right: 1px; }
+    .items-table .mrp-cell { font-size: 6px; line-height: 1.1; }
+    .items-table .mrp-strikethrough { font-size: 6px; }
+    .items-table .discount-percent { font-size: 6px; margin-top: 1px; }
+    ` : ''}
     .totals { margin-top: ${isNarrow ? '10px' : '15px'}; ${isNarrow ? 'width: 100%;' : 'margin-left: auto; width: 300px;'} }
     .totals-row { display: flex; justify-content: space-between; padding: ${isNarrow ? '3px' : '5px'} 0; border-bottom: ${isNarrow ? '1px dashed #ccc' : '1px solid #ddd'}; font-size: ${sizes.base}; }
     .totals-row.total { font-weight: bold; font-size: ${sizes.totals}; border-top: ${isNarrow ? '2px' : '2px'} solid #000; border-bottom: ${isNarrow ? '2px' : '2px'} solid #000; padding: ${isNarrow ? '5px' : '8px'} 0; margin-top: ${isNarrow ? '5px' : '8px'}; }

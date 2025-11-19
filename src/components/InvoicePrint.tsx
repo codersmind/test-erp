@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
 import type { SalesOrder, SalesOrderItem, PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 import { getPrintSettings, getPrintStyles, type PrintPaperSize, type CustomPrintFormat } from '../utils/printSettings'
-import { getDefaultTemplate, renderTemplate } from '../utils/invoiceTemplate'
+import { getDefaultTemplate, getTemplateByPaperSize, renderTemplate } from '../utils/invoiceTemplate'
 import { getProduct } from '../db/localDataService'
 
 interface InvoicePrintProps {
@@ -26,15 +26,24 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
     const [selectedFormatId, setSelectedFormatId] = useState<string | undefined>(undefined)
     const [customTemplate, setCustomTemplate] = useState<Awaited<ReturnType<typeof getDefaultTemplate>> | null>(null)
     const [previewStyles, setPreviewStyles] = useState<string>('')
+    const [itemsWithProducts, setItemsWithProducts] = useState<Array<{
+      item: SalesOrderItem | PurchaseOrderItem
+      product: Awaited<ReturnType<typeof getProduct>> | null
+      mrp: number
+      salePrice: number
+      discountPercent: number
+    }>>([])
 
     useEffect(() => {
       const loadSettings = async () => {
-        const [settings, template] = await Promise.all([
-          getPrintSettings(),
-          getDefaultTemplate()
-        ])
+        const settings = await getPrintSettings()
         setPrintSettings(settings)
+        
+        // Load template based on default paper size
+        const paperSize = settings.defaultPaperSize === 'saved' ? 'a4' : settings.defaultPaperSize
+        const template = await getTemplateByPaperSize(paperSize)
         setCustomTemplate(template)
+        
         if (settings.defaultPaperSize === 'saved' && settings.defaultFormatId) {
           setSelectedPaperSize('saved')
           setSelectedFormatId(settings.defaultFormatId)
@@ -45,15 +54,23 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
       loadSettings()
     }, [])
 
-    // Update preview styles when page size changes
+    // Update template and preview styles when page size changes
     useEffect(() => {
-      const updatePreviewStyles = async () => {
+      const updateTemplateAndStyles = async () => {
         if (!printSettings) return
+
+        // Get template based on selected paper size
+        const paperSizeForTemplate = selectedPaperSize === 'saved' ? 'a4' : selectedPaperSize
+        const template = await getTemplateByPaperSize(paperSizeForTemplate)
+        if (template) {
+          setCustomTemplate(template)
+        }
+
         const formatId = selectedPaperSize === 'saved' ? selectedFormatId : undefined
         const styles = await getPrintStyles(selectedPaperSize, printSettings.customWidth, printSettings.customHeight, formatId)
         setPreviewStyles(styles)
       }
-      updatePreviewStyles()
+      updateTemplateAndStyles()
     }, [selectedPaperSize, selectedFormatId, printSettings])
 
     const handlePrint = async () => {
@@ -87,8 +104,9 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         }
       }
 
-      // Check for custom template
-      const customTemplate = await getDefaultTemplate()
+      // Get template based on paper size
+      const paperSizeForTemplate = paperSize === 'saved' ? 'a4' : paperSize
+      const customTemplate = await getTemplateByPaperSize(paperSizeForTemplate)
       
       let htmlContent: string
 
@@ -100,6 +118,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         const orderTotal = 'total' in order ? order.total : 0
         const orderSubtotal = 'subtotal' in order ? order.subtotal : 0
         const orderTax = 'tax' in order ? order.tax : 0
+        // Discount already includes round figure discount (added in createSalesOrder)
         const orderDiscount = 'discount' in order ? order.discount || 0 : 0
         const orderTaxType = 'taxType' in order ? order.taxType : undefined
         const orderCgst = 'cgst' in order ? order.cgst : undefined
@@ -109,14 +128,26 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         const itemsWithNames = await Promise.all(
           items.map(async (item) => {
             const product = await getProduct(item.productId)
+            const unitPrice = 'unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0
+            const mrp = product?.mrp || 0
+            // Use the actual unitPrice from order as sale price (what was actually charged)
+            const salePrice = unitPrice
+            // Calculate discount percentage from MRP to sale price
+            const discountPercent = mrp > 0 && salePrice < mrp 
+              ? Math.round(((mrp - salePrice) / mrp) * 100) 
+              : 0
+            
             return {
               productName: product?.title || item.productId,
               quantity: item.quantity,
-              unitPrice: ('unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0).toLocaleString(undefined, {
+              mrp: mrp > 0 ? mrp.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+              salePrice: salePrice.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+              unitPrice: unitPrice.toLocaleString(undefined, {
                 style: 'currency',
                 currency: 'INR',
               }),
               discount: ('discount' in item ? item.discount : 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+              discountPercent: discountPercent > 0 ? `${discountPercent}%` : '',
               lineTotal: item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
             }
           })
@@ -145,6 +176,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
           showDiscount: type === 'sales',
           subtotal: orderSubtotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
           discount: orderDiscount > 0 ? orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+          // Note: orderDiscount already includes round figure discount (added in createSalesOrder)
           tax: orderTax > 0 && orderTaxType !== 'cgst_sgst' ? orderTax.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
           cgst: orderCgst && typeof orderCgst === 'number' && orderCgst > 0 ? Number(orderCgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
           sgst: orderSgst && typeof orderSgst === 'number' && orderSgst > 0 ? Number(orderSgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
@@ -288,6 +320,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
     const orderTotal = 'total' in order ? order.total : 0
     const orderSubtotal = 'subtotal' in order ? order.subtotal : 0
     const orderTax = 'tax' in order ? order.tax : 0
+    // Discount already includes round figure discount (added in createSalesOrder)
     const orderDiscount = 'discount' in order ? order.discount || 0 : 0
     const orderTaxType = 'taxType' in order ? order.taxType : undefined
     const orderCgst = 'cgst' in order ? order.cgst : undefined
@@ -295,7 +328,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
 
     // Prepare template data for preview
     const prepareTemplateData = async () => {
-      if (!customTemplate || !printSettings) return null
+      if (!printSettings) return null
       
       const formatId = selectedPaperSize === 'saved' ? selectedFormatId : undefined
       let formatDetails: CustomPrintFormat | null = null
@@ -307,15 +340,27 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
       const companyInfo = formatDetails || printSettings
       const itemsWithNames = await Promise.all(
         items.map(async (item) => {
-          const product = await getProduct(item.productId)
+            const product = await getProduct(item.productId)
+            const unitPrice = 'unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0
+            const mrp = product?.mrp || 0
+            // Use the actual unitPrice from order as sale price (what was actually charged)
+            const salePrice = unitPrice
+            // Calculate discount percentage from MRP to sale price
+            const discountPercent = mrp > 0 && salePrice < mrp 
+              ? Math.round(((mrp - salePrice) / mrp) * 100) 
+              : 0
+          
           return {
             productName: product?.title || item.productId,
             quantity: item.quantity,
-            unitPrice: ('unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0).toLocaleString(undefined, {
+            mrp: mrp > 0 ? mrp.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+            salePrice: salePrice.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+            unitPrice: unitPrice.toLocaleString(undefined, {
               style: 'currency',
               currency: 'INR',
             }),
             discount: ('discount' in item ? item.discount : 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
+            discountPercent: discountPercent > 0 ? `${discountPercent}%` : '',
             lineTotal: item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
           }
         })
@@ -344,6 +389,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         showDiscount: type === 'sales',
         subtotal: orderSubtotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' }),
         discount: orderDiscount > 0 ? orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
+        // Note: orderDiscount already includes round figure discount (added in createSalesOrder)
         tax: orderTax > 0 && orderTaxType !== 'cgst_sgst' ? orderTax.toLocaleString(undefined, { style: 'currency', currency: 'INR' }) : '',
         cgst: orderCgst && typeof orderCgst === 'number' && orderCgst > 0 ? Number(orderCgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
         sgst: orderSgst && typeof orderSgst === 'number' && orderSgst > 0 ? Number(orderSgst).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '',
@@ -356,13 +402,45 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
 
     const [previewHtml, setPreviewHtml] = useState<string>('')
 
+    // Load product data for items
+    useEffect(() => {
+      const loadProducts = async () => {
+        const itemsData = await Promise.all(
+          items.map(async (item) => {
+            const product = await getProduct(item.productId)
+            const unitPrice = 'unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0
+            const mrp = product?.mrp || 0
+            // Use the actual unitPrice from order as sale price (what was actually charged)
+            const salePrice = unitPrice
+            const discountPercent = mrp > 0 && salePrice < mrp 
+              ? Math.round(((mrp - salePrice) / mrp) * 100) 
+              : 0
+            return { item, product, mrp, salePrice, discountPercent }
+          })
+        )
+        setItemsWithProducts(itemsData)
+      }
+      loadProducts()
+    }, [items])
+
     // Update preview when template, page size, or data changes
     useEffect(() => {
       const updatePreview = async () => {
-        if (!customTemplate || !printSettings || !previewStyles) {
+        if (!printSettings || !previewStyles) {
           setPreviewHtml('')
           return
         }
+        
+        // Get template based on selected paper size
+        const paperSizeForTemplate = selectedPaperSize === 'saved' ? 'a4' : selectedPaperSize
+        const template = await getTemplateByPaperSize(paperSizeForTemplate)
+        
+        if (!template) {
+          setPreviewHtml('')
+          return
+        }
+        
+        setCustomTemplate(template)
         
         const templateData = await prepareTemplateData()
         if (!templateData) {
@@ -370,7 +448,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
           return
         }
         
-        let renderedHtml = renderTemplate(customTemplate, templateData)
+        let renderedHtml = renderTemplate(template, templateData)
         
         // Inject preview styles
         const styleTagRegex = /<\/style>/gi
@@ -388,7 +466,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
         setPreviewHtml(renderedHtml)
       }
       updatePreview()
-    }, [customTemplate, previewStyles, selectedPaperSize, selectedFormatId, order.id, order.issuedDate, order.createdAt, order.status, order.notes, items.length, customerName, supplierName])
+    }, [previewStyles, selectedPaperSize, selectedFormatId, order.id, order.issuedDate, order.createdAt, order.status, order.notes, items.length, customerName, supplierName, printSettings])
 
     return (
       <>
@@ -398,13 +476,21 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
               <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Paper Size:</label>
           <select
             value={selectedPaperSize}
-            onChange={(e) => {
+            onChange={async (e) => {
               const newSize = e.target.value as PrintPaperSize
               setSelectedPaperSize(newSize)
               if (newSize !== 'saved') {
                 setSelectedFormatId(undefined)
               } else if (printSettings?.savedFormats && printSettings.savedFormats.length > 0) {
                 setSelectedFormatId(printSettings.savedFormats[0].id)
+              }
+              // Immediately update template when paper size changes
+              if (printSettings) {
+                const paperSizeForTemplate = newSize === 'saved' ? 'a4' : newSize
+                const template = await getTemplateByPaperSize(paperSizeForTemplate)
+                if (template) {
+                  setCustomTemplate(template)
+                }
               }
             }}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
@@ -521,33 +607,49 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
               </div>
             </div>
 
-            <table className='my-4'>
+            <table className='my-4' style={{ width: '100%', tableLayout: selectedPaperSize === 'pos' ? 'fixed' : 'auto' }}>
               <thead>
                 <tr>
-                  <th>Item</th>
-                  <th className="text-right">Qty</th>
-                  <th className="text-right">Price</th>
-                  {type === 'sales' && <th className="text-right">Discount</th>}
-                  <th className="text-right">Total</th>
+                  <th style={selectedPaperSize === 'pos' ? { width: '20%', fontSize: '8px', padding: '3px 1px' } : {}}>Item</th>
+                  <th className="text-right" style={selectedPaperSize === 'pos' ? { width: '8%', fontSize: '8px', padding: '3px 1px' } : {}}>Qty</th>
+                  {type === 'sales' && <th className="text-right" style={selectedPaperSize === 'pos' ? { width: '18%', fontSize: '8px', padding: '3px 1px' } : {}}>MRP</th>}
+                  {type === 'sales' && <th className="text-right" style={selectedPaperSize === 'pos' ? { width: '18%', fontSize: '8px', padding: '3px 1px' } : {}}>Sale Price</th>}
+                  {type === 'sales' && <th className="text-right" style={selectedPaperSize === 'pos' ? { width: '18%', fontSize: '8px', padding: '3px 1px' } : {}}>Item Discount</th>}
+                  <th className="text-right" style={selectedPaperSize === 'pos' ? { width: '18%', fontSize: '8px', padding: '3px 1px' } : {}}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, index) => (
+                {itemsWithProducts.map(({ item, product, mrp, salePrice, discountPercent }, index) => (
                   <tr key={item.id || index}>
-                    <td>{item.productId}</td>
-                    <td className="text-right">{item.quantity}</td>
-                    <td className="text-right">
-                      {('unitPrice' in item ? item.unitPrice : 'unitCost' in item ? item.unitCost : 0).toLocaleString(undefined, {
-                        style: 'currency',
-                        currency: 'INR',
-                      })}
-                    </td>
+                    <td style={selectedPaperSize === 'pos' ? { fontSize: '7px', padding: '3px 1px', wordWrap: 'break-word' } : {}}>{product?.title || item.productId}</td>
+                    <td className="text-right" style={selectedPaperSize === 'pos' ? { fontSize: '7px', padding: '3px 1px' } : {}}>{item.quantity}</td>
+                    {type === 'sales' && (
+                      <td className="text-right" style={{ lineHeight: '1.4', ...(selectedPaperSize === 'pos' ? { fontSize: '6px', padding: '3px 1px' } : {}) }}>
+                        {mrp > 0 ? (
+                          <>
+                            <span style={{ textDecoration: 'line-through', color: '#666', display: 'block' }}>
+                              {mrp.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                            </span>
+                            {discountPercent > 0 && (
+                              <span style={{ color: '#2563eb', fontWeight: 500, fontSize: selectedPaperSize === 'pos' ? '6px' : '10px', display: 'block', marginTop: '2px' }}>
+                                {discountPercent}%
+                              </span>
+                            )}
+                          </>
+                        ) : '-'}
+                      </td>
+                    )}
+                    {type === 'sales' && (
+                      <td className="text-right" style={selectedPaperSize === 'pos' ? { fontSize: '7px', padding: '3px 1px', whiteSpace: 'normal' } : {}}>
+                        {salePrice.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
+                      </td>
+                    )}
                     {type === 'sales' && 'discount' in item && (
-                      <td className="text-right">
+                      <td className="text-right" style={selectedPaperSize === 'pos' ? { fontSize: '7px', padding: '3px 1px', whiteSpace: 'normal' } : {}}>
                         {item.discount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                       </td>
                     )}
-                    <td className="text-right">
+                    <td className="text-right" style={selectedPaperSize === 'pos' ? { fontSize: '7px', padding: '3px 1px', whiteSpace: 'normal' } : {}}>
                       {item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}
                     </td>
                   </tr>
@@ -562,7 +664,7 @@ export const InvoicePrint = forwardRef<InvoicePrintRef, InvoicePrintProps>(
               </div>
               {orderDiscount > 0 && (
                 <div className="totals-row">
-                  <span>Discount:</span>
+                  <span>Discount (includes round off):</span>
                   <span>-{orderDiscount.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}</span>
                 </div>
               )}
