@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Formik, FieldArray } from 'formik'
+import { FileText, Printer, Trash2, X } from 'lucide-react'
 
 import { useCreatePurchaseOrder, useUpdatePurchaseOrderStatus, useUpdatePurchaseOrderNotes, useDeletePurchaseOrder } from '../hooks/usePurchaseOrders'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -91,27 +92,42 @@ const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete:
           </div>
         </td>
         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setShowNote(!showNote)}
-              className="text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+              title={order.notes ? 'Edit Note' : 'Add Note'}
             >
-              {order.notes ? 'Edit Note' : '+ Add Note'}
+              <FileText className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{order.notes ? 'Edit Note' : 'Add Note'}</span>
             </button>
             <button
               type="button"
-              onClick={() => setShowPrint(true)}
-              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+              onClick={() => setShowPrint(!showPrint)}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300"
+              title={showPrint ? 'Close Print' : 'Print Purchase Order'}
             >
-              Print
+              {showPrint ? (
+                <>
+                  <X className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Close Print</span>
+                </>
+              ) : (
+                <>
+                  <Printer className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Print</span>
+                </>
+              )}
             </button>
             <button
               type="button"
               onClick={() => onDelete(order.id)}
-              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+              title="Delete Order"
             >
-              Delete
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Delete</span>
             </button>
           </div>
         </td>
@@ -154,12 +170,6 @@ const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete:
         <tr>
           <td colSpan={7} className="px-3 py-4">
             <InvoicePrint order={order} items={items} supplierName={order.supplierName} type="purchase" />
-            <button
-              onClick={() => setShowPrint(false)}
-              className="mt-2 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400"
-            >
-              Close
-            </button>
           </td>
         </tr>
       )}
