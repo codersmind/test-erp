@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import type { SalesOrder, SalesOrderItem } from '../db/schema'
+import { getProduct } from '../db/localDataService'
+import type { Product } from '../db/schema'
 
 interface ReceiptPreviewProps {
   order: SalesOrder
@@ -6,7 +9,21 @@ interface ReceiptPreviewProps {
 }
 
 export const ReceiptPreview = ({ order, items }: ReceiptPreviewProps) => {
+  const [itemsWithProducts, setItemsWithProducts] = useState<Array<{ item: SalesOrderItem; product: Product | null }>>([])
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0)
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      const itemsData = await Promise.all(
+        items.map(async (item) => {
+          const product = await getProduct(item.productId)
+          return { item, product }
+        })
+      )
+      setItemsWithProducts(itemsData)
+    }
+    loadProducts()
+  }, [items])
 
   return (
     <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -23,9 +40,9 @@ export const ReceiptPreview = ({ order, items }: ReceiptPreviewProps) => {
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
+          {itemsWithProducts.map(({ item, product }) => (
             <tr key={item.id}>
-              <td className="py-1">{item.productId}</td>
+              <td className="py-1">{product?.title || item.productId}</td>
               <td className="py-1 text-right">{item.quantity}</td>
               <td className="py-1 text-right">
                 {item.lineTotal.toLocaleString(undefined, { style: 'currency', currency: 'INR' })}

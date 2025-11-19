@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Formik } from 'formik'
 
-import { useAdjustProductStock, useCreateProduct } from '../hooks/useProducts'
+import { useAdjustProductStock, useCreateProduct, useDeleteProduct } from '../hooks/useProducts'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ErrorDialog } from '../components/ErrorDialog'
 import { useProductsPaginated, type ProductSortField, type SortOrder } from '../hooks/useProductsPaginated'
 import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { ProductEditModal } from '../components/ProductEditModal'
@@ -28,9 +30,14 @@ export const ProductsPage = () => {
   const { data: paginatedData, isPending } = useProductsPaginated(page, PAGE_SIZE, searchQuery, sortBy, sortOrder)
   const createProduct = useCreateProduct()
   const adjustStock = useAdjustProductStock()
+  const deleteProduct = useDeleteProduct()
   const [units, setUnits] = useState<Unit[]>([])
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
   const { unitSettings, loadSettings } = useSettingsStore()
 
   useEffect(() => {
@@ -52,6 +59,24 @@ export const ProductsPage = () => {
   const handleEdit = (product: Product) => {
     setEditingProduct(product)
     setShowEditModal(true)
+  }
+
+  const handleDeleteClick = (product: Product) => {
+    setProductToDelete(product)
+    setShowDeleteDialog(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (productToDelete) {
+      try {
+        await deleteProduct.mutateAsync(productToDelete.id)
+        setProductToDelete(null)
+        setShowDeleteDialog(false)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to delete product. It may be used in existing orders.')
+        setShowErrorDialog(true)
+      }
+    }
   }
 
   const handleSearchChange = (query: string) => {
@@ -365,6 +390,13 @@ export const ProductsPage = () => {
                         >
                           −1
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClick(product)}
+                          className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -400,6 +432,27 @@ export const ProductsPage = () => {
           setEditingProduct(null)
         }}
         product={editingProduct}
+      />
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setProductToDelete(null)
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Product"
+        message={`Are you sure you want to delete "${productToDelete?.title}"? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+      />
+      <ErrorDialog
+        isOpen={showErrorDialog}
+        onClose={() => {
+          setShowErrorDialog(false)
+          setErrorMessage(null)
+        }}
+        title="Cannot Delete Product"
+        message={errorMessage || 'An error occurred while deleting the product.'}
       />
     </div>
   )

@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react'
 
-import { useCreateCustomer } from '../hooks/useCustomers'
+import { useCreateCustomer, useDeleteCustomer } from '../hooks/useCustomers'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ErrorDialog } from '../components/ErrorDialog'
 import { useCustomersPaginated } from '../hooks/useCustomersPaginated'
 import { Pagination } from '../components/Pagination'
 import { CustomerEditModal } from '../components/CustomerEditModal'
@@ -16,8 +18,13 @@ export const CustomersPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null)
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
   const { data: paginatedData, isPending } = useCustomersPaginated(activeTab, page, PAGE_SIZE, searchQuery)
   const createCustomerMutation = useCreateCustomer()
+  const deleteCustomer = useDeleteCustomer()
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -43,7 +50,24 @@ export const CustomersPage = () => {
     setSearchQuery(query)
     setPage(1)
   }
-  
+
+  const handleDeleteClick = (customer: Customer) => {
+    setCustomerToDelete(customer)
+    setShowDeleteDialog(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (customerToDelete) {
+      try {
+        await deleteCustomer.mutateAsync(customerToDelete.id)
+        setCustomerToDelete(null)
+        setShowDeleteDialog(false)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to delete customer. They may be referenced in existing orders, invoices, or payments.')
+        setShowErrorDialog(true)
+      }
+    }
+  }
 
   const customers = paginatedData?.items ?? []
   const total = paginatedData?.total ?? 0
@@ -191,6 +215,13 @@ export const CustomersPage = () => {
                   >
                     Edit
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteClick(customer)}
+                    className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                  >
+                    Delete
+                  </button>
                 </div>
               </li>
             ))
@@ -219,6 +250,27 @@ export const CustomersPage = () => {
         isOpen={viewingCustomer !== null}
         onClose={() => setViewingCustomer(null)}
         customer={viewingCustomer}
+      />
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setCustomerToDelete(null)
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Customer"
+        message={`Are you sure you want to delete "${customerToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+      />
+      <ErrorDialog
+        isOpen={showErrorDialog}
+        onClose={() => {
+          setShowErrorDialog(false)
+          setErrorMessage(null)
+        }}
+        title="Cannot Delete Customer"
+        message={errorMessage || 'An error occurred while deleting the customer.'}
       />
     </div>
   )

@@ -40,3 +40,18 @@ export const useUpdateCustomer = () => {
   })
 }
 
+export const useDeleteCustomer = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { deleteCustomer } = await import('../db/localDataService')
+      return deleteCustomer(id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CUSTOMERS_KEY })
+      queryClient.invalidateQueries({ queryKey: ['customers', 'paginated'] })
+    },
+  })
+}
+

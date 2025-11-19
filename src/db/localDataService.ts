@@ -1078,3 +1078,68 @@ export const markRecordsSynced = async (ids: string[]) => {
   })
 }
 
+// Delete functions
+export const deleteProduct = async (id: string) => {
+  // Check if product is used in any sales orders or purchase orders
+  const salesOrderItems = await db.salesOrderItems.where('productId').equals(id).count()
+  const purchaseOrderItems = await db.purchaseOrderItems.where('productId').equals(id).count()
+  
+  if (salesOrderItems > 0 || purchaseOrderItems > 0) {
+    throw new Error(
+      `Cannot delete product. It is used in ${salesOrderItems} sales order item(s) and ${purchaseOrderItems} purchase order item(s). Please delete or modify those orders first.`
+    )
+  }
+
+  await db.transaction('rw', db.products, db.syncQueue, async () => {
+    await db.products.delete(id)
+    await enqueueChange('product', id, 'delete', { id })
+  })
+}
+
+export const deleteCustomer = async (id: string) => {
+  // Check if customer is used in any sales orders, invoices, or payments
+  const salesOrders = await db.salesOrders.where('customerId').equals(id).count()
+  const invoices = await db.invoices.where('customerId').equals(id).count()
+  const payments = await db.payments.where('customerId').equals(id).count()
+  
+  if (salesOrders > 0 || invoices > 0 || payments > 0) {
+    throw new Error(
+      `Cannot delete customer. They are referenced in ${salesOrders} sales order(s), ${invoices} invoice(s), and ${payments} payment(s). Please delete or modify those records first.`
+    )
+  }
+
+  await db.transaction('rw', db.customers, db.syncQueue, async () => {
+    await db.customers.delete(id)
+    await enqueueChange('customer', id, 'delete', { id })
+  })
+}
+
+export const deleteSalesOrder = async (id: string) => {
+  // Check if sales order is referenced in any invoices
+  const invoices = await db.invoices.where('salesOrderId').equals(id).count()
+  
+  if (invoices > 0) {
+    throw new Error(
+      `Cannot delete sales order. It is referenced in ${invoices} invoice(s). Please delete those invoices first.`
+    )
+  }
+
+  await db.transaction('rw', db.salesOrders, db.salesOrderItems, db.syncQueue, async () => {
+    // Delete all items first
+    await db.salesOrderItems.where('orderId').equals(id).delete()
+    // Then delete the order
+    await db.salesOrders.delete(id)
+    await enqueueChange('salesOrder', id, 'delete', { id })
+  })
+}
+
+export const deletePurchaseOrder = async (id: string) => {
+  await db.transaction('rw', db.purchaseOrders, db.purchaseOrderItems, db.syncQueue, async () => {
+    // Delete all items first
+    await db.purchaseOrderItems.where('orderId').equals(id).delete()
+    // Then delete the order
+    await db.purchaseOrders.delete(id)
+    await enqueueChange('purchaseOrder', id, 'delete', { id })
+  })
+}
+

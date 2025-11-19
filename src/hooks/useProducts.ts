@@ -46,3 +46,16 @@ export const useAdjustProductStock = () => {
   })
 }
 
+export const useDeleteProduct = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { deleteProduct } = await import('../db/localDataService')
+      return deleteProduct(id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
+    },
+  })
+}
+

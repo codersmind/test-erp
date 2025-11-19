@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Formik, FieldArray } from 'formik'
 
-import { useCreateSalesOrder, useUpdateSalesOrderStatus, useUpdateSalesOrderNotes } from '../hooks/useSalesOrders'
+import { useCreateSalesOrder, useUpdateSalesOrderStatus, useUpdateSalesOrderNotes, useDeleteSalesOrder } from '../hooks/useSalesOrders'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ErrorDialog } from '../components/ErrorDialog'
 import { useSalesOrdersPaginated } from '../hooks/useSalesOrdersPaginated'
 import { db } from '../db/database'
 import { ReceiptPreview } from '../components/ReceiptPreview'
@@ -25,7 +27,7 @@ import type { Customer } from '../db/schema'
 const PAGE_SIZE = 20
 
 // Component to render a sales order row with items
-const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
+const SalesOrderRow = ({ order, onDelete }: { order: SalesOrder; onDelete: (id: string) => void }) => {
   const [items, setItems] = useState<SalesOrderItem[]>([])
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [showPrint, setShowPrint] = useState(false)
@@ -112,6 +114,13 @@ const SalesOrderRow = ({ order }: { order: SalesOrder }) => {
             >
               Print
             </button>
+            <button
+              type="button"
+              onClick={() => onDelete(order.id)}
+              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Delete
+            </button>
           </div>
         </td>
       </tr>
@@ -178,10 +187,15 @@ export const SalesOrdersPage = () => {
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
   const [initialTaxSettings, setInitialTaxSettings] = useState<TaxSettings | null>(null)
   const [defaultRoundFigure, setDefaultRoundFigure] = useState(false)
+  const [orderToDelete, setOrderToDelete] = useState<SalesOrder | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
   const isSearchingRef = useRef<Record<number, boolean>>({})
   const originalProductIdRef = useRef<Record<number, string>>({})
   const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void } | null>(null)
   const createSalesOrderMutation = useCreateSalesOrder()
+  const deleteSalesOrder = useDeleteSalesOrder()
 
   // Load tax settings and order settings on mount
   useEffect(() => {
@@ -195,6 +209,27 @@ export const SalesOrdersPage = () => {
   const total = paginatedData?.total ?? 0
   const totalPages = paginatedData?.totalPages ?? 0
   const latestOrder = orders?.[0]
+
+  const handleDeleteClick = (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId)
+    if (order) {
+      setOrderToDelete(order)
+      setShowDeleteDialog(true)
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (orderToDelete) {
+      try {
+        await deleteSalesOrder.mutateAsync(orderToDelete.id)
+        setOrderToDelete(null)
+        setShowDeleteDialog(false)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to delete sales order. It may be referenced in invoices.')
+        setShowErrorDialog(true)
+      }
+    }
+  }
   const latestItems = useLiveQuery(
     () => (latestOrder ? db.salesOrderItems.where('orderId').equals(latestOrder.id).toArray() : []),
     [latestOrder?.id],
@@ -1024,7 +1059,7 @@ export const SalesOrdersPage = () => {
                 </tr>
               ) : orders.length ? (
                 orders.map((order) => (
-                  <SalesOrderRow key={order.id} order={order} />
+                  <SalesOrderRow key={order.id} order={order} onDelete={handleDeleteClick} />
                 ))
               ) : (
                 <tr>
@@ -1098,6 +1133,27 @@ export const SalesOrdersPage = () => {
         }}
         order={newlyCreatedOrder}
         items={newlyCreatedItems}
+      />
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setOrderToDelete(null)
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Sales Order"
+        message={`Are you sure you want to delete sales order #${orderToDelete?.id.slice(0, 8)}? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+      />
+      <ErrorDialog
+        isOpen={showErrorDialog}
+        onClose={() => {
+          setShowErrorDialog(false)
+          setErrorMessage(null)
+        }}
+        title="Cannot Delete Sales Order"
+        message={errorMessage || 'An error occurred while deleting the sales order.'}
       />
     </div>
   )

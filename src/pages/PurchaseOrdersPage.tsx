@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { Formik, FieldArray } from 'formik'
 
-import { useCreatePurchaseOrder, useUpdatePurchaseOrderStatus, useUpdatePurchaseOrderNotes } from '../hooks/usePurchaseOrders'
+import { useCreatePurchaseOrder, useUpdatePurchaseOrderStatus, useUpdatePurchaseOrderNotes, useDeletePurchaseOrder } from '../hooks/usePurchaseOrders'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ErrorDialog } from '../components/ErrorDialog'
 import { usePurchaseOrdersPaginated } from '../hooks/usePurchaseOrdersPaginated'
 import { CustomerQuickCreateModal } from '../components/CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
@@ -20,7 +22,7 @@ import type { PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 const PAGE_SIZE = 20
 
 // Component to render a purchase order row with items
-const PurchaseOrderRow = ({ order }: { order: PurchaseOrder }) => {
+const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete: (id: string) => void }) => {
   const [items, setItems] = useState<PurchaseOrderItem[]>([])
   const [showPrint, setShowPrint] = useState(false)
   const [showNote, setShowNote] = useState(false)
@@ -104,6 +106,13 @@ const PurchaseOrderRow = ({ order }: { order: PurchaseOrder }) => {
             >
               Print
             </button>
+            <button
+              type="button"
+              onClick={() => onDelete(order.id)}
+              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Delete
+            </button>
           </div>
         </td>
       </tr>
@@ -167,7 +176,12 @@ export const PurchaseOrdersPage = () => {
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null)
+  const [orderToDelete, setOrderToDelete] = useState<PurchaseOrder | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
   const createPurchaseOrderMutation = useCreatePurchaseOrder()
+  const deletePurchaseOrder = useDeletePurchaseOrder()
   const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void } | null>(null)
   const isSearchingRef = useRef<Record<number, boolean>>({})
   const originalProductIdRef = useRef<Record<number, string>>({})
@@ -187,6 +201,27 @@ export const PurchaseOrdersPage = () => {
   const orders = paginatedData?.items ?? []
   const total = paginatedData?.total ?? 0
   const totalPages = paginatedData?.totalPages ?? 0
+
+  const handleDeleteClick = (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId)
+    if (order) {
+      setOrderToDelete(order)
+      setShowDeleteDialog(true)
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (orderToDelete) {
+      try {
+        await deletePurchaseOrder.mutateAsync(orderToDelete.id)
+        setOrderToDelete(null)
+        setShowDeleteDialog(false)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to delete purchase order.')
+        setShowErrorDialog(true)
+      }
+    }
+  }
 
   const initialValues: PurchaseOrderFormValues = {
     supplierId: '',
@@ -635,7 +670,7 @@ export const PurchaseOrdersPage = () => {
                 </tr>
               ) : orders.length ? (
                 orders.map((order) => (
-                  <PurchaseOrderRow key={order.id} order={order} />
+                  <PurchaseOrderRow key={order.id} order={order} onDelete={handleDeleteClick} />
                 ))
               ) : (
                 <tr>
@@ -685,6 +720,27 @@ export const PurchaseOrdersPage = () => {
           setShowProductModal(false)
           setSelectedProductIndex(null)
         }}
+      />
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setOrderToDelete(null)
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Purchase Order"
+        message={`Are you sure you want to delete purchase order #${orderToDelete?.id.slice(0, 8)}? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+      />
+      <ErrorDialog
+        isOpen={showErrorDialog}
+        onClose={() => {
+          setShowErrorDialog(false)
+          setErrorMessage(null)
+        }}
+        title="Cannot Delete Purchase Order"
+        message={errorMessage || 'An error occurred while deleting the purchase order.'}
       />
     </div>
   )

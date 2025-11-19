@@ -53,3 +53,18 @@ export const useUpdatePurchaseOrderNotes = () => {
   })
 }
 
+export const useDeletePurchaseOrder = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { deletePurchaseOrder } = await import('../db/localDataService')
+      return deletePurchaseOrder(id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PURCHASE_ORDERS_KEY })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+}
+

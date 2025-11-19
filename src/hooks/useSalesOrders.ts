@@ -53,3 +53,18 @@ export const useUpdateSalesOrderNotes = () => {
   })
 }
 
+export const useDeleteSalesOrder = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { deleteSalesOrder } = await import('../db/localDataService')
+      return deleteSalesOrder(id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SALES_ORDERS_KEY })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+}
+
