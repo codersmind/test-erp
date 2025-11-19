@@ -3,6 +3,8 @@ import { zipSync, unzipSync } from 'fflate'
 
 import type {
   Customer,
+  Invoice,
+  Payment,
   Product,
   PurchaseOrder,
   PurchaseOrderItem,
@@ -150,6 +152,41 @@ const mapPurchaseOrderItemRow = (row: Record<string, unknown>): PurchaseOrderIte
   lineTotal: toNumberValue(row.lineTotal),
 })
 
+const mapInvoiceRow = (row: Record<string, unknown>): Invoice => ({
+  id: toStringValue(row.id),
+  tenantId: toStringValue(row.tenantId),
+  createdAt: toStringValue(row.createdAt, nowIso()),
+  updatedAt: toStringValue(row.updatedAt, nowIso()),
+  version: toNumberValue(row.version),
+  invoiceNumber: toStringValue(row.invoiceNumber),
+  salesOrderId: toStringValue(row.salesOrderId),
+  customerId: toStringValue(row.customerId),
+  status: toStringValue(row.status) as Invoice['status'],
+  issuedDate: toStringValue(row.issuedDate, nowIso()),
+  dueDate: toStringValue(row.dueDate, nowIso()),
+  subtotal: toNumberValue(row.subtotal),
+  tax: toNumberValue(row.tax),
+  total: toNumberValue(row.total),
+  paidAmount: toNumberValue(row.paidAmount ?? 0),
+  balance: toNumberValue(row.balance ?? 0),
+  notes: toOptionalString(row.notes),
+} as Invoice)
+
+const mapPaymentRow = (row: Record<string, unknown>): Payment => ({
+  id: toStringValue(row.id),
+  tenantId: toStringValue(row.tenantId),
+  createdAt: toStringValue(row.createdAt, nowIso()),
+  updatedAt: toStringValue(row.updatedAt, nowIso()),
+  version: toNumberValue(row.version),
+  invoiceId: toStringValue(row.invoiceId),
+  customerId: toStringValue(row.customerId),
+  amount: toNumberValue(row.amount),
+  paymentDate: toStringValue(row.paymentDate, nowIso()),
+  method: toStringValue(row.method) as Payment['method'],
+  reference: toOptionalString(row.reference),
+  notes: toOptionalString(row.notes),
+} as Payment)
+
 const tableCreators = [
   `CREATE TABLE customers (
       id TEXT PRIMARY KEY,
@@ -247,6 +284,39 @@ const tableCreators = [
       quantity REAL,
       unitCost REAL,
       lineTotal REAL
+    );`,
+  `CREATE TABLE invoices (
+      id TEXT PRIMARY KEY,
+      tenantId TEXT,
+      createdAt TEXT,
+      updatedAt TEXT,
+      version INTEGER,
+      invoiceNumber TEXT,
+      salesOrderId TEXT,
+      customerId TEXT,
+      status TEXT,
+      issuedDate TEXT,
+      dueDate TEXT,
+      subtotal REAL,
+      tax REAL,
+      total REAL,
+      paidAmount REAL,
+      balance REAL,
+      notes TEXT
+    );`,
+  `CREATE TABLE payments (
+      id TEXT PRIMARY KEY,
+      tenantId TEXT,
+      createdAt TEXT,
+      updatedAt TEXT,
+      version INTEGER,
+      invoiceId TEXT,
+      customerId TEXT,
+      amount REAL,
+      paymentDate TEXT,
+      method TEXT,
+      reference TEXT,
+      notes TEXT
     );`,
   `CREATE TABLE sync_metadata (
       exportedAt TEXT
@@ -476,6 +546,84 @@ const insertPurchaseOrderItems = (db: Database, items: PurchaseOrderItem[]) => {
   stmt.free()
 }
 
+const insertInvoices = (db: Database, invoices: Invoice[]) => {
+  const stmt = db.prepare(
+    `INSERT INTO invoices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+      tenantId=excluded.tenantId,
+      createdAt=excluded.createdAt,
+      updatedAt=excluded.updatedAt,
+      version=excluded.version,
+      invoiceNumber=excluded.invoiceNumber,
+      salesOrderId=excluded.salesOrderId,
+      customerId=excluded.customerId,
+      status=excluded.status,
+      issuedDate=excluded.issuedDate,
+      dueDate=excluded.dueDate,
+      subtotal=excluded.subtotal,
+      tax=excluded.tax,
+      total=excluded.total,
+      paidAmount=excluded.paidAmount,
+      balance=excluded.balance,
+      notes=excluded.notes`,
+  )
+  invoices.forEach((invoice) => {
+    stmt.run([
+      invoice.id,
+      invoice.tenantId,
+      invoice.createdAt,
+      invoice.updatedAt,
+      invoice.version,
+      invoice.invoiceNumber,
+      invoice.salesOrderId,
+      invoice.customerId,
+      invoice.status,
+      invoice.issuedDate,
+      invoice.dueDate,
+      invoice.subtotal,
+      invoice.tax,
+      invoice.total,
+      invoice.paidAmount ?? 0,
+      invoice.balance ?? 0,
+      invoice.notes ?? null,
+    ])
+  })
+  stmt.free()
+}
+
+const insertPayments = (db: Database, payments: Payment[]) => {
+  const stmt = db.prepare(
+    `INSERT INTO payments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+      tenantId=excluded.tenantId,
+      createdAt=excluded.createdAt,
+      updatedAt=excluded.updatedAt,
+      version=excluded.version,
+      invoiceId=excluded.invoiceId,
+      customerId=excluded.customerId,
+      amount=excluded.amount,
+      paymentDate=excluded.paymentDate,
+      method=excluded.method,
+      reference=excluded.reference,
+      notes=excluded.notes`,
+  )
+  payments.forEach((payment) => {
+    stmt.run([
+      payment.id,
+      payment.tenantId,
+      payment.createdAt,
+      payment.updatedAt,
+      payment.version,
+      payment.invoiceId,
+      payment.customerId,
+      payment.amount,
+      payment.paymentDate,
+      payment.method,
+      payment.reference ?? null,
+      payment.notes ?? null,
+    ])
+  })
+  stmt.free()
+}
+
 const selectAll = (db: Database, query: string): Array<Record<string, unknown>> => {
   const results = db.exec(query)
   if (!results.length) return []
@@ -500,6 +648,8 @@ export const snapshotToSqliteZip = async (snapshot: SyncSnapshot) => {
   insertSalesOrderItems(db, snapshot.salesOrderItems)
   insertPurchaseOrders(db, snapshot.purchaseOrders)
   insertPurchaseOrderItems(db, snapshot.purchaseOrderItems)
+  insertInvoices(db, snapshot.invoices || [])
+  insertPayments(db, snapshot.payments || [])
 
   const metaStmt = db.prepare('INSERT INTO sync_metadata (exportedAt) VALUES (?)')
   metaStmt.run([snapshot.exportedAt ?? nowIso()])
@@ -544,6 +694,23 @@ export const sqliteZipToSnapshot = async (archive: Uint8Array): Promise<SyncSnap
     mapPurchaseOrderItemRow(row),
   )
 
+  // Try to read invoices and payments, but handle case where tables might not exist in older snapshots
+  let invoices: Invoice[] = []
+  let payments: Payment[] = []
+  try {
+    invoices = selectAll(db, 'SELECT * FROM invoices').map((row) => mapInvoiceRow(row))
+  } catch (error) {
+    // Table doesn't exist in older snapshots
+    console.warn('Invoices table not found in snapshot, skipping')
+  }
+  
+  try {
+    payments = selectAll(db, 'SELECT * FROM payments').map((row) => mapPaymentRow(row))
+  } catch (error) {
+    // Table doesn't exist in older snapshots
+    console.warn('Payments table not found in snapshot, skipping')
+  }
+
   const metadataRow = selectAll(db, 'SELECT exportedAt FROM sync_metadata LIMIT 1')[0]
   const metadata = metadataRow as { exportedAt?: string } | undefined
   db.close()
@@ -570,6 +737,8 @@ export const sqliteZipToSnapshot = async (archive: Uint8Array): Promise<SyncSnap
     salesOrderItems,
     purchaseOrders,
     purchaseOrderItems,
+    invoices,
+    payments,
     syncQueue: [] as SyncRecord[],
     logo,
   }

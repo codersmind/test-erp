@@ -1,5 +1,5 @@
 import { db } from '../db/database'
-import type { Customer, Product, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, SyncRecord } from '../db/schema'
+import type { Customer, Invoice, Payment, Product, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, SyncRecord } from '../db/schema'
 import { nowIso } from '../db/utils'
 import { loadSecureToken, saveSecureToken } from '../security/secureStorage'
 import { snapshotToSqliteZip, sqliteZipToSnapshot } from './sqliteAdapter'
@@ -14,6 +14,8 @@ export interface SyncSnapshot {
   salesOrderItems: SalesOrderItem[]
   purchaseOrders: PurchaseOrder[]
   purchaseOrderItems: PurchaseOrderItem[]
+  invoices: Invoice[]
+  payments: Payment[]
   syncQueue: SyncRecord[]
   logo?: LogoData | null
 }
@@ -140,7 +142,7 @@ const updateSyncFile = async (token: string, fileId: string, archive: Uint8Array
 }
 
 export const buildLocalSnapshot = async (): Promise<SyncSnapshot> => {
-  const [customers, products, salesOrders, salesOrderItems, purchaseOrders, purchaseOrderItems, syncQueue, logo] =
+  const [customers, products, salesOrders, salesOrderItems, purchaseOrders, purchaseOrderItems, invoices, payments, syncQueue, logo] =
     await Promise.all([
       db.customers.toArray(),
       db.products.toArray(),
@@ -148,6 +150,8 @@ export const buildLocalSnapshot = async (): Promise<SyncSnapshot> => {
       db.salesOrderItems.toArray(),
       db.purchaseOrders.toArray(),
       db.purchaseOrderItems.toArray(),
+      db.invoices.toArray(),
+      db.payments.toArray(),
       db.syncQueue.toArray(),
       (async () => {
         const { getLogo } = await import('../utils/logoStorage')
@@ -163,6 +167,8 @@ export const buildLocalSnapshot = async (): Promise<SyncSnapshot> => {
     salesOrderItems,
     purchaseOrders,
     purchaseOrderItems,
+    invoices,
+    payments,
     syncQueue,
     logo: logo || null,
   }

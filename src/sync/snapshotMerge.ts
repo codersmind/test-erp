@@ -1,5 +1,5 @@
 import { db } from '../db/database'
-import type { Customer, Product, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem } from '../db/schema'
+import type { Customer, Invoice, Payment, Product, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem } from '../db/schema'
 import { nowIso } from '../db/utils'
 import type { SyncSnapshot } from './googleDriveClient'
 
@@ -60,6 +60,8 @@ export const mergeSnapshots = (local: SyncSnapshot, remote: SyncSnapshot): SyncS
     salesOrderItems: mergeCollections<SalesOrderItem>(local.salesOrderItems, remote.salesOrderItems),
     purchaseOrders: mergeCollections<PurchaseOrder>(local.purchaseOrders, remote.purchaseOrders),
     purchaseOrderItems: mergeCollections<PurchaseOrderItem>(local.purchaseOrderItems, remote.purchaseOrderItems),
+    invoices: mergeCollections<Invoice>(local.invoices || [], remote.invoices || []),
+    payments: mergeCollections<Payment>(local.payments || [], remote.payments || []),
     // Preserve local unsynced events; remote queue represents historical uploads.
     syncQueue: local.syncQueue,
     logo,
@@ -67,13 +69,15 @@ export const mergeSnapshots = (local: SyncSnapshot, remote: SyncSnapshot): SyncS
 }
 
 export const applySnapshotToLocal = async (snapshot: SyncSnapshot) => {
-  await db.transaction('rw', [db.customers, db.products, db.salesOrders, db.salesOrderItems, db.purchaseOrders, db.purchaseOrderItems], async () => {
+  await db.transaction('rw', [db.customers, db.products, db.salesOrders, db.salesOrderItems, db.purchaseOrders, db.purchaseOrderItems, db.invoices, db.payments], async () => {
     await db.customers.bulkPut(snapshot.customers)
     await db.products.bulkPut(snapshot.products)
     await db.salesOrders.bulkPut(snapshot.salesOrders)
     await db.salesOrderItems.bulkPut(snapshot.salesOrderItems)
     await db.purchaseOrders.bulkPut(snapshot.purchaseOrders)
     await db.purchaseOrderItems.bulkPut(snapshot.purchaseOrderItems)
+    await db.invoices.bulkPut(snapshot.invoices || [])
+    await db.payments.bulkPut(snapshot.payments || [])
   })
   
   // Apply logo if present
