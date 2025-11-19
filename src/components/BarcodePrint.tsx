@@ -37,35 +37,133 @@ export const BarcodePrint = ({ barcode, productTitle, productSku, onClose }: Bar
     loadPaperSizes()
   }, [])
 
-  useEffect(() => {
-    if (svgRef.current && barcode) {
+  const renderBarcode = (targetSvg: SVGSVGElement | null, barcodeValue: string, format: BarcodeFormat) => {
+    if (!targetSvg || !barcodeValue || barcodeValue.trim() === '') return false
+    
+    // Clear previous content
+    targetSvg.innerHTML = ''
+    
+    try {
+      // Try with the selected format
+      JsBarcode(targetSvg, barcodeValue.trim(), {
+        format: format,
+        width: 2,
+        height: 80,
+        displayValue: true,
+        fontSize: 16,
+        margin: 10,
+        background: 'transparent',
+      })
+      return true
+    } catch (error) {
+      console.error('Failed to generate barcode with format', format, ':', error)
+      // Fallback to CODE128 if format fails
       try {
-        JsBarcode(svgRef.current, barcode, {
-          format: barcodeFormat,
+        targetSvg.innerHTML = ''
+        JsBarcode(targetSvg, barcodeValue.trim(), {
+          format: 'CODE128',
           width: 2,
           height: 80,
           displayValue: true,
           fontSize: 16,
           margin: 10,
+          background: 'transparent',
         })
+        return true
+      } catch (fallbackError) {
+        console.error('Failed to generate barcode with fallback:', fallbackError)
+        // Show error message in SVG
+        targetSvg.innerHTML = `
+          <svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+            <text x="100" y="50" text-anchor="middle" fill="red" font-size="12" font-family="Arial">
+              Barcode generation failed
+            </text>
+            <text x="100" y="70" text-anchor="middle" fill="gray" font-size="10" font-family="Arial">
+              Value: ${barcodeValue.substring(0, 20)}
+            </text>
+          </svg>
+        `
+        return false
+      }
+    }
+  }
+
+  // Render barcode immediately when barcode value changes
+  useEffect(() => {
+    if (!barcode || barcode.trim() === '') {
+      if (svgRef.current) {
+        svgRef.current.innerHTML = `
+          <svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+            <text x="100" y="50" text-anchor="middle" fill="gray" font-size="12" font-family="Arial">
+              No barcode available
+            </text>
+          </svg>
+        `
+      }
+      return
+    }
+    
+    // Render immediately with CODE128 first (most compatible)
+    const renderImmediate = () => {
+      if (!svgRef.current) {
+        console.warn('SVG ref is not available')
+        return
+      }
+      
+      try {
+        console.log('Rendering barcode:', barcode.trim())
+        svgRef.current.innerHTML = ''
+        JsBarcode(svgRef.current, barcode.trim(), {
+          format: 'CODE128',
+          width: 2,
+          height: 80,
+          displayValue: true,
+          fontSize: 16,
+          margin: 10,
+          background: 'transparent',
+        })
+        console.log('Barcode rendered successfully, SVG content length:', svgRef.current.innerHTML.length)
       } catch (error) {
-        console.error('Failed to generate barcode:', error)
-        // Fallback to CODE128 if format fails
-        try {
-          JsBarcode(svgRef.current, barcode, {
-            format: 'CODE128',
-            width: 2,
-            height: 80,
-            displayValue: true,
-            fontSize: 16,
-            margin: 10,
-          })
-        } catch (fallbackError) {
-          console.error('Failed to generate barcode with fallback:', fallbackError)
+        console.error('Failed to render barcode:', error)
+        if (svgRef.current) {
+          svgRef.current.innerHTML = `
+            <svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+              <text x="100" y="50" text-anchor="middle" fill="red" font-size="12" font-family="Arial">
+                Error: ${error instanceof Error ? error.message : 'Unknown error'}
+              </text>
+            </svg>
+          `
         }
       }
     }
-  }, [barcode, barcodeFormat])
+    
+    // Try immediate render, then retry after a short delay
+    renderImmediate()
+    const timeoutId = setTimeout(() => {
+      if (svgRef.current && svgRef.current.innerHTML.length < 100) {
+        // If SVG is still empty, try again
+        renderImmediate()
+      }
+    }, 200)
+    
+    return () => clearTimeout(timeoutId)
+  }, [barcode])
+
+  // Update barcode format when format changes (if barcode already exists)
+  useEffect(() => {
+    if (!svgRef.current || !barcode || barcode.trim() === '' || !barcodeFormat) return
+    
+    // Only update if format is different from CODE128 (which was rendered initially)
+    if (barcodeFormat === 'CODE128') return
+    
+    const timeoutId = setTimeout(() => {
+      if (svgRef.current) {
+        renderBarcode(svgRef.current, barcode, barcodeFormat)
+      }
+    }, 200)
+    
+    return () => clearTimeout(timeoutId)
+  }, [barcodeFormat, barcode])
 
   const generateBarcodeSVG = (barcodeValue: string): string => {
     const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
@@ -250,7 +348,14 @@ export const BarcodePrint = ({ barcode, productTitle, productSku, onClose }: Bar
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
       <div ref={printRef} className="barcode-container mb-4">
-        <svg ref={svgRef} className="mx-auto" />
+        <div className="flex justify-center items-center min-h-[120px] bg-white dark:bg-slate-200 rounded border border-slate-200 dark:border-slate-700 p-4">
+          <svg 
+            ref={svgRef} 
+            className="mx-auto"
+            style={{ display: 'block', minWidth: '200px', minHeight: '80px' }}
+            xmlns="http://www.w3.org/2000/svg"
+          />
+        </div>
         {productTitle && (
           <div className="product-info mt-2 text-center text-xs text-slate-600 dark:text-slate-400">
             {productTitle}
