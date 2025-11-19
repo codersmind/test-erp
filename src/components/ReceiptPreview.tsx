@@ -17,7 +17,7 @@ export const ReceiptPreview = ({ order, items }: ReceiptPreviewProps) => {
       const itemsData = await Promise.all(
         items.map(async (item) => {
           const product = await getProduct(item.productId)
-          return { item, product }
+          return { item, product: product ?? null }
         })
       )
       setItemsWithProducts(itemsData)

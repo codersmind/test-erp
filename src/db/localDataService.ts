@@ -1097,14 +1097,73 @@ export const deleteProduct = async (id: string) => {
 }
 
 export const deleteCustomer = async (id: string) => {
-  // Check if customer is used in any sales orders, invoices, or payments
+  // Check if customer is used in any sales orders
   const salesOrders = await db.salesOrders.where('customerId').equals(id).count()
-  const invoices = await db.invoices.where('customerId').equals(id).count()
-  const payments = await db.payments.where('customerId').equals(id).count()
   
-  if (salesOrders > 0 || invoices > 0 || payments > 0) {
+  // Check for invoices directly referencing the customer
+  let invoices = 0
+  try {
+    invoices = await db.invoices.where('customerId').equals(id).count()
+  } catch (error) {
+    // Fallback: if indexed query fails, use filter
+    const allInvoices = await db.invoices.toArray()
+    invoices = allInvoices.filter(inv => inv.customerId === id).length
+  }
+  
+  // Check for payments directly referencing the customer
+  let payments = 0
+  try {
+    payments = await db.payments.where('customerId').equals(id).count()
+  } catch (error) {
+    // Fallback: if indexed query fails, use filter
+    const allPayments = await db.payments.toArray()
+    payments = allPayments.filter(pay => pay.customerId === id).length
+  }
+  
+  // Also check for payments that reference invoices for this customer
+  // (payments can reference customer both directly and through invoices)
+  // We need to count payments that reference invoices for this customer,
+  // but exclude those already counted via direct customerId
+  let paymentsViaInvoices = 0
+  if (invoices > 0) {
+    try {
+      const customerInvoices = await db.invoices.where('customerId').equals(id).toArray()
+      const invoiceIds = customerInvoices.map(inv => inv.id)
+      if (invoiceIds.length > 0) {
+        // Get all payments for these invoices, then filter out those already counted via customerId
+        const allPaymentsForInvoices = await db.payments.where('invoiceId').anyOf(invoiceIds).toArray()
+        // Only count payments that don't already have this customerId (to avoid double counting)
+        paymentsViaInvoices = allPaymentsForInvoices.filter(pay => pay.customerId !== id).length
+      }
+    } catch (error) {
+      // Fallback: if indexed query fails, use filter
+      const allInvoices = await db.invoices.filter(inv => inv.customerId === id).toArray()
+      const invoiceIds = allInvoices.map(inv => inv.id)
+      const allPayments = await db.payments.toArray()
+      const paymentsForInvoices = allPayments.filter(pay => invoiceIds.includes(pay.invoiceId))
+      // Only count payments that don't already have this customerId
+      paymentsViaInvoices = paymentsForInvoices.filter(pay => pay.customerId !== id).length
+    }
+  }
+  
+  // Total payments = direct payments + payments via invoices (avoiding double counting)
+  const totalPayments = payments + paymentsViaInvoices
+  
+  // Build error message with only non-zero counts
+  const references: string[] = []
+  if (salesOrders > 0) {
+    references.push(`${salesOrders} sales order(s)`)
+  }
+  if (invoices > 0) {
+    references.push(`${invoices} invoice(s)`)
+  }
+  if (totalPayments > 0) {
+    references.push(`${totalPayments} payment(s)`)
+  }
+  
+  if (references.length > 0) {
     throw new Error(
-      `Cannot delete customer. They are referenced in ${salesOrders} sales order(s), ${invoices} invoice(s), and ${payments} payment(s). Please delete or modify those records first.`
+      `Cannot delete customer. They are referenced in ${references.join(', ')}. Please delete or modify those records first.`
     )
   }
 
