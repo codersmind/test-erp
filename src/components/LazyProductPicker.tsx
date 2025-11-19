@@ -67,7 +67,8 @@ export const LazyProductPicker = ({
     }
     // If a product is selected, show its title and price (as seen in your image's item field)
     if (selectedProduct) {
-      return `${selectedProduct.title} - ${(selectedProduct.salePrice ?? selectedProduct.price ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}`
+      return `${selectedProduct?.title}`
+//       return `${selectedProduct.title} - ${(selectedProduct.salePrice ?? selectedProduct.price ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'INR' })}`
     }
     // Otherwise, the input is empty
     return ''
