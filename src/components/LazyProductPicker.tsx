@@ -1,34 +1,47 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef } from 'react'
 
 import { searchProducts } from '../db/localDataService'
 import type { Product } from '../db/schema'
 
 interface LazyProductPickerProps {
-  value: string
-  onChange: (productId: string) => void
-  onQuickCreate?: () => void
-  onSearchStart?: () => void
-  onSearchEnd?: () => void
-  placeholder?: string
-  className?: string
+  value: string
+  onChange: (productId: string) => void
+  onQuickCreate?: () => void
+  onSearchStart?: () => void
+  onSearchEnd?: () => void
+  placeholder?: string
+  className?: string
+  autoFocus?: boolean
 }
 
-export const LazyProductPicker = ({
-  value,
-  onChange,
-  onQuickCreate,
-  onSearchStart,
-  onSearchEnd,
-  placeholder = 'Search products...',
-  className = '',
-}: LazyProductPickerProps) => {
+export interface LazyProductPickerRef {
+  focus: () => void
+}
+
+export const LazyProductPicker = forwardRef<LazyProductPickerRef, LazyProductPickerProps>(({
+  value,
+  onChange,
+  onQuickCreate,
+  onSearchStart,
+  onSearchEnd,
+  placeholder = 'Search products...',
+  className = '',
+  autoFocus = false,
+}, ref) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const isSearchingRef = useRef(false)
-  // Ref to track the input element
-  const inputRef = useRef<HTMLInputElement>(null)
+  // Ref to track the input element
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Expose focus method via ref
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus()
+    },
+  }), [])
 
   // UseMemo to find the selected product object
   const selectedProduct = useMemo(() => {
@@ -124,8 +137,15 @@ export const LazyProductPicker = ({
     }
   }
 
-  // Handle input blur
-  const handleBlur = () => {
+  // Auto-focus on mount if autoFocus prop is true
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus()
+    }
+  }, [autoFocus])
+
+  // Handle input blur
+  const handleBlur = () => {
     // Use setTimeout to allow the item selection (handleSelect) to register
     setTimeout(() => {
       // Check if the dropdown is still open (i.e., focus moved outside of the whole component)
@@ -256,7 +276,7 @@ export const LazyProductPicker = ({
             }
           }}
         />
-      )}
-    </div>
-  )
-}
+      )}
+    </div>
+  )
+})

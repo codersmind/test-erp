@@ -14,7 +14,7 @@ import type { SalesOrder, SalesOrderItem } from '../db/schema'
 import { CustomerQuickCreateModal } from '../components/CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from '../components/ProductQuickCreateModal'
 import { SalesOrderPrintModal } from '../components/SalesOrderPrintModal'
-import { LazyProductPicker } from '../components/LazyProductPicker'
+import { LazyProductPicker, type LazyProductPickerRef } from '../components/LazyProductPicker'
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
 import Datepicker from 'react-tailwindcss-datepicker'
@@ -203,7 +203,9 @@ export const SalesOrdersPage = () => {
   const [showErrorDialog, setShowErrorDialog] = useState(false)
   const isSearchingRef = useRef<Record<number, boolean>>({})
   const originalProductIdRef = useRef<Record<number, string>>({})
-  const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void } | null>(null)
+  const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void; getFieldValue?: (field: string) => any } | null>(null)
+  const formikValuesRef = useRef<SalesOrderFormValues | null>(null)
+  const productPickerRefs = useRef<Record<number, LazyProductPickerRef | null>>({})
   const createSalesOrderMutation = useCreateSalesOrder()
   const deleteSalesOrder = useDeleteSalesOrder()
 
@@ -387,8 +389,9 @@ export const SalesOrdersPage = () => {
           }}
         >
           {({ values, handleSubmit, isSubmitting, setFieldValue, errors, touched }) => {
-            // Store setFieldValue in ref for modal callbacks and barcode scanner
+            // Store setFieldValue and values in refs for modal callbacks and barcode scanner
             formikRef.current = { setFieldValue }
+            formikValuesRef.current = values
 
             // Load customer state when customer is selected
             useEffect(() => {
@@ -542,6 +545,9 @@ export const SalesOrdersPage = () => {
                               <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Product</label>
                               <div className="mt-1">
                                 <LazyProductPicker
+                                  ref={(ref) => {
+                                    productPickerRefs.current[index] = ref
+                                  }}
                                   value={item.productId || ''}
                                   onChange={async (productId) => {
                                     isSearchingRef.current[index] = false
@@ -558,6 +564,18 @@ export const SalesOrdersPage = () => {
                                       setFieldValue(`lineItems.${index}.productId`, productId)
                                       setFieldValue(`lineItems.${index}.unitPrice`, unitPrice)
                                       setFieldValue(`lineItems.${index}.discount`, 0)
+                                      
+                                      // Auto-add blank item after product selection
+                                      const currentItems = values.lineItems || []
+                                      // Add blank item if current item is the last item
+                                      if (index === currentItems.length - 1) {
+                                        const newIndex = currentItems.length
+                                        push({ productId: '', quantity: 1, unitPrice: 0, discount: 0 })
+                                        // Focus the newly added item's input after a short delay
+                                        setTimeout(() => {
+                                          productPickerRefs.current[newIndex]?.focus()
+                                        }, 100)
+                                      }
                                     }
                                   }}
                                   onSearchStart={() => {
@@ -1129,6 +1147,23 @@ export const SalesOrdersPage = () => {
             formikRef.current.setFieldValue(`lineItems.${selectedProductIndex}.productId`, product.id)
             formikRef.current.setFieldValue(`lineItems.${selectedProductIndex}.unitPrice`, unitPrice)
             formikRef.current.setFieldValue(`lineItems.${selectedProductIndex}.discount`, 0)
+            
+            // Auto-add blank item after product creation
+            setTimeout(() => {
+              if (formikRef.current && formikValuesRef.current) {
+                const currentLineItems = formikValuesRef.current.lineItems || []
+                // Add blank item if the created product is on the last item
+                if (selectedProductIndex === currentLineItems.length - 1) {
+                  const newIndex = currentLineItems.length
+                  const newItems = [...currentLineItems, { productId: '', quantity: 1, unitPrice: 0, discount: 0 }]
+                  formikRef.current.setFieldValue('lineItems', newItems)
+                  // Focus the newly added item's input after a short delay
+                  setTimeout(() => {
+                    productPickerRefs.current[newIndex]?.focus()
+                  }, 100)
+                }
+              }
+            }, 0)
           }
           setShowProductModal(false)
           setSelectedProductIndex(null)
