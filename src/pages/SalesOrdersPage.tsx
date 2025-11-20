@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Formik, FieldArray } from 'formik'
-import { FileText, Printer, Trash2, X } from 'lucide-react'
+import { FileText, Printer, Trash2, X, GripVertical } from 'lucide-react'
 
 import { useCreateSalesOrder, useUpdateSalesOrderStatus, useUpdateSalesOrderNotes, useDeleteSalesOrder } from '../hooks/useSalesOrders'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -206,6 +206,8 @@ export const SalesOrdersPage = () => {
   const formikRef = useRef<{ setFieldValue: (field: string, value: any) => void; getFieldValue?: (field: string) => any } | null>(null)
   const formikValuesRef = useRef<SalesOrderFormValues | null>(null)
   const productPickerRefs = useRef<Record<number, LazyProductPickerRef | null>>({})
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const createSalesOrderMutation = useCreateSalesOrder()
   const deleteSalesOrder = useDeleteSalesOrder()
 
@@ -523,7 +525,45 @@ export const SalesOrdersPage = () => {
                 </div>
 
                 <FieldArray name="lineItems">
-                  {({ push, remove }) => (
+                  {({ push, remove, move }) => {
+                    const handleDragStart = (e: React.DragEvent, index: number) => {
+                      setDraggedIndex(index)
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/html', index.toString())
+                    }
+                    
+                    const handleDragOver = (e: React.DragEvent, index: number) => {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (draggedIndex !== null && draggedIndex !== index) {
+                        setDragOverIndex(index)
+                      }
+                    }
+                    
+                    const handleDragLeave = () => {
+                      setDragOverIndex(null)
+                    }
+                    
+                    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+                      e.preventDefault()
+                      if (draggedIndex !== null && draggedIndex !== dropIndex) {
+                        // Move the item in Formik
+                        move(draggedIndex, dropIndex)
+                        
+                        // Clear all refs to force re-initialization
+                        // This ensures React re-renders the components with correct values
+                        productPickerRefs.current = {}
+                      }
+                      setDraggedIndex(null)
+                      setDragOverIndex(null)
+                    }
+                    
+                    const handleDragEnd = () => {
+                      setDraggedIndex(null)
+                      setDragOverIndex(null)
+                    }
+                    
+                    return (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Items</label>
@@ -536,14 +576,35 @@ export const SalesOrdersPage = () => {
                         </button>
                       </div>
                       <div className="space-y-3">
-                        {lineItems.map((item, index) => (
+                        {lineItems.map((item, index) => {
+                          // Use a stable key: productId if exists, otherwise use index
+                          // This ensures items with products keep their identity when reordered
+                          const stableKey = item.productId ? `product-${item.productId}` : `empty-${index}`
+                          return (
                           <div
-                            key={index}
-                            className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:grid-cols-12"
+                            key={stableKey}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, index)}
+                            onDragEnd={handleDragEnd}
+                            className={`grid grid-cols-1 gap-3 rounded-lg border p-3 transition-all sm:grid-cols-12 ${
+                              draggedIndex === index
+                                ? 'border-blue-500 bg-blue-50 opacity-50 dark:border-blue-400 dark:bg-blue-900/20'
+                                : dragOverIndex === index
+                                ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
+                                : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'
+                            }`}
                           >
+                            {/* <div className="flex items-center sm:col-span-1">
+                              <GripVertical className="h-5 w-5 cursor-move text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300" />
+                            </div> */}
                             <div className="sm:col-span-4">
                               <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Product</label>
-                              <div className="mt-1">
+                              <div className="mt-1 flex items-center gap-2">
+                              <GripVertical className="h-5 w-5 cursor-move text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300" />
+                              <div className='w-full'>
                                 <LazyProductPicker
                                   ref={(ref) => {
                                     productPickerRefs.current[index] = ref
@@ -599,6 +660,7 @@ export const SalesOrdersPage = () => {
                                   }}
                                   placeholder="Search products..."
                                 />
+                              </div>
                               </div>
                             </div>
                             <div className="sm:col-span-2">
@@ -670,10 +732,12 @@ export const SalesOrdersPage = () => {
                               </button>
                             </div>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
-                  )}
+                    )
+                  }}
                 </FieldArray>
 
           {/* Professional Tax Summary Section - Zoho Style */}

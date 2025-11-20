@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Formik, FieldArray } from 'formik'
-import { FileText, Printer, Trash2, X } from 'lucide-react'
+import { FileText, Printer, Trash2, X, GripVertical } from 'lucide-react'
 
 import { useCreatePurchaseOrder, useUpdatePurchaseOrderStatus, useUpdatePurchaseOrderNotes, useDeletePurchaseOrder } from '../hooks/usePurchaseOrders'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -197,6 +197,8 @@ export const PurchaseOrdersPage = () => {
   const isSearchingRef = useRef<Record<number, boolean>>({})
   const originalProductIdRef = useRef<Record<number, string>>({})
   const productPickerRefs = useRef<Record<number, LazyProductPickerRef | null>>({})
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -356,7 +358,49 @@ export const PurchaseOrdersPage = () => {
           </div>
 
                 <FieldArray name="lineItems">
-                  {({ push, remove }) => (
+                  {({ push, remove, move }) => {
+                    const handleDragStart = (e: React.DragEvent, index: number) => {
+                      setDraggedIndex(index)
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/html', index.toString())
+                    }
+                    
+                    const handleDragOver = (e: React.DragEvent, index: number) => {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (draggedIndex !== null && draggedIndex !== index) {
+                        setDragOverIndex(index)
+                      }
+                    }
+                    
+                    const handleDragLeave = () => {
+                      setDragOverIndex(null)
+                    }
+                    
+                    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+                      e.preventDefault()
+                      if (draggedIndex !== null && draggedIndex !== dropIndex) {
+                        // Move the item in Formik
+                        move(draggedIndex, dropIndex)
+                        
+                        // Clear all refs to force re-initialization
+                        productPickerRefs.current = {}
+                        
+                        // Use setTimeout to update refs after React re-renders
+                        setTimeout(() => {
+                          // Refs will be reassigned by the ref callback in the map
+                        }, 0)
+                      }
+                      setDraggedIndex(null)
+                      setDragOverIndex(null)
+                    }
+                    
+                    const handleDragEnd = () => {
+                      setDraggedIndex(null)
+                      setDragOverIndex(null)
+                    }
+                    
+                    return (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Items</label>
@@ -369,64 +413,86 @@ export const PurchaseOrdersPage = () => {
               </button>
             </div>
             <div className="space-y-3">
-                        {lineItems.map((item, index) => (
+                        {lineItems.map((item, index) => {
+                          // Use a stable key: productId if exists, otherwise use index
+                          // This ensures items with products keep their identity when reordered
+                          const stableKey = item.productId ? `product-${item.productId}` : `empty-${index}`
+                          return (
                 <div
-                  key={index}
-                  className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50 sm:grid-cols-12"
+                  key={stableKey}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`grid grid-cols-1 gap-3 rounded-lg border p-3 transition-all sm:grid-cols-12 ${
+                    draggedIndex === index
+                      ? 'border-blue-500 bg-blue-50 opacity-50 dark:border-blue-400 dark:bg-blue-900/20'
+                      : dragOverIndex === index
+                      ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
+                      : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'
+                  }`}
                 >
+                  {/* <div className="flex items-center sm:col-span-1">
+                    <GripVertical className="h-5 w-5 cursor-move text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300" />
+                  </div> */}
                   <div className="sm:col-span-4">
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">Product</label>
-                    <div className="mt-1">
-                      <LazyProductPicker
-                        ref={(ref) => {
-                          productPickerRefs.current[index] = ref
-                        }}
-                        value={item.productId || ''}
-                        onChange={async (productId) => {
-                          isSearchingRef.current[index] = false
-                          delete originalProductIdRef.current[index]
-                          if (!productId) {
-                            setFieldValue(`lineItems.${index}.productId`, '')
-                            setFieldValue(`lineItems.${index}.unitCost`, 0)
-                            return
-                          }
-                          const product = await getProduct(productId)
-                          if (product) {
-                            setFieldValue(`lineItems.${index}.productId`, productId)
-                            setFieldValue(`lineItems.${index}.unitCost`, product.cost)
-                            
-                            // Auto-add blank item after product selection
-                            const currentItems = values.lineItems || []
-                            // Add blank item if current item is the last item
-                            if (index === currentItems.length - 1) {
-                              const newIndex = currentItems.length
-                              push({ productId: '', quantity: 1, unitCost: 0 })
-                              // Focus the newly added item's input after a short delay
+                    <div className="mt-1 flex items-center gap-2">
+                    <GripVertical className="h-5 w-5 cursor-move text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300" />
+                    <div className='w-full'>
+                        <LazyProductPicker
+                            ref={(ref) => {
+                              productPickerRefs.current[index] = ref
+                            }}
+                            value={item.productId || ''}
+                            onChange={async (productId) => {
+                              isSearchingRef.current[index] = false
+                              delete originalProductIdRef.current[index]
+                              if (!productId) {
+                                setFieldValue(`lineItems.${index}.productId`, '')
+                                setFieldValue(`lineItems.${index}.unitCost`, 0)
+                                return
+                              }
+                              const product = await getProduct(productId)
+                              if (product) {
+                                setFieldValue(`lineItems.${index}.productId`, productId)
+                                setFieldValue(`lineItems.${index}.unitCost`, product.cost)
+                                
+                                // Auto-add blank item after product selection
+                                const currentItems = values.lineItems || []
+                                // Add blank item if current item is the last item
+                                if (index === currentItems.length - 1) {
+                                  const newIndex = currentItems.length
+                                  push({ productId: '', quantity: 1, unitCost: 0 })
+                                  // Focus the newly added item's input after a short delay
+                                  setTimeout(() => {
+                                    productPickerRefs.current[newIndex]?.focus()
+                                  }, 100)
+                                }
+                              }
+                            }}
+                            onSearchStart={() => {
+                              const currentItem = lineItems[index]
+                              if (currentItem?.productId) {
+                                originalProductIdRef.current[index] = currentItem.productId
+                              }
+                              isSearchingRef.current[index] = true
+                            }}
+                            onSearchEnd={() => {
+                              isSearchingRef.current[index] = false
                               setTimeout(() => {
-                                productPickerRefs.current[newIndex]?.focus()
+                                delete originalProductIdRef.current[index]
                               }, 100)
-                            }
-                          }
-                        }}
-                        onSearchStart={() => {
-                          const currentItem = lineItems[index]
-                          if (currentItem?.productId) {
-                            originalProductIdRef.current[index] = currentItem.productId
-                          }
-                          isSearchingRef.current[index] = true
-                        }}
-                        onSearchEnd={() => {
-                          isSearchingRef.current[index] = false
-                          setTimeout(() => {
-                            delete originalProductIdRef.current[index]
-                          }, 100)
-                        }}
-                        onQuickCreate={() => {
-                          setSelectedProductIndex(index)
-                          setShowProductModal(true)
-                        }}
-                        placeholder="Type or click to select an item"
-                      />
+                            }}
+                            onQuickCreate={() => {
+                              setSelectedProductIndex(index)
+                              setShowProductModal(true)
+                            }}
+                            placeholder="Type or click to select an item"
+                          />
+                    </div>
                     </div>
                   </div>
                   <div className="sm:col-span-3">
@@ -479,10 +545,12 @@ export const PurchaseOrdersPage = () => {
                     </button>
                   </div>
                 </div>
-              ))}
+                          )
+                        })}
             </div>
           </div>
-                  )}
+                    )
+                  }}
                 </FieldArray>
 
           <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">

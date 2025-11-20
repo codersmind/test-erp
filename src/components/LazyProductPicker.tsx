@@ -43,12 +43,33 @@ export const LazyProductPicker = forwardRef<LazyProductPickerRef, LazyProductPic
     },
   }), [])
 
-  // UseMemo to find the selected product object
-  const selectedProduct = useMemo(() => {
-    // Look in the current products list first, or fallback if the list is empty/re-searched
-    // NOTE: For production, you might need an additional 'fetchProductById' if not found in the search results
-    return products.find((p) => p.id === value)
-  }, [products, value])
+  // Load product when value exists but not in products list
+  useEffect(() => {
+    if (value && !products.find((p) => p.id === value)) {
+      const loadProduct = async () => {
+        try {
+          const { getProduct } = await import('../db/localDataService')
+          const product = await getProduct(value)
+          if (product) {
+            // Add to products array if not already there
+            setProducts((prev) => {
+              if (prev.find((p) => p.id === value)) return prev
+              return [product, ...prev]
+            })
+          }
+        } catch (error) {
+          console.error('Failed to load product:', error)
+        }
+      }
+      loadProduct()
+    }
+  }, [value]) // Remove products from deps to avoid infinite loop
+
+  // UseMemo to find the selected product object
+  const selectedProduct = useMemo(() => {
+    // Look in the current products list first, or fallback if the list is empty/re-searched
+    return products.find((p) => p.id === value)
+  }, [products, value])
 
   // Effect for debounced product search
   useEffect(() => {
