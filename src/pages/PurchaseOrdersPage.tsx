@@ -490,7 +490,7 @@ export const PurchaseOrdersPage = () => {
                               setSelectedProductIndex(index)
                               setShowProductModal(true)
                             }}
-                            placeholder="Type or click to select an item"
+                            placeholder="Search products or scan barcode..."
                           />
                     </div>
                     </div>

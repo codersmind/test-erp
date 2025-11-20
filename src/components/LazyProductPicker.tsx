@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef } from 'react'
+import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react'
 
 import { searchProducts } from '../db/localDataService'
+import { db } from '../db/database'
+import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import type { Product } from '../db/schema'
 
 interface LazyProductPickerProps {
@@ -28,13 +30,17 @@ export const LazyProductPicker = forwardRef<LazyProductPickerRef, LazyProductPic
   className = '',
   autoFocus = false,
 }, ref) => {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [products, setProducts] = useState<Product[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [isOpen, setIsOpen] = useState(false)
-  const isSearchingRef = useRef(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [products, setProducts] = useState<Product[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+  const isSearchingRef = useRef(false)
   // Ref to track the input element
   const inputRef = useRef<HTMLInputElement>(null)
+  // Ref to track if input is focused (for barcode scanning)
+  const isFocusedRef = useRef(false)
+  // Ref to track if user is currently typing (to prevent barcode scan interference)
+  const isTypingRef = useRef(false)
 
   // Expose focus method via ref
   useImperativeHandle(ref, () => ({
@@ -109,54 +115,55 @@ export const LazyProductPicker = forwardRef<LazyProductPickerRef, LazyProductPic
   }, [searchQuery, selectedProduct])
 
 
-  // Handle item selection
-  const handleSelect = (productId: string) => {
-    isSearchingRef.current = false
-    onSearchEnd?.() // Notify search ended
-    onChange(productId) // Update product ID
-    setIsOpen(false) // Close dropdown
-    setSearchQuery('') // Clear search query to show selected product's full name/price
-    inputRef.current?.blur() // Remove focus from the input
-  }
 
-  // Handle input change (typing)
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newQuery = event.target.value
-    const wasSearching = !!searchQuery
-    const hadValue = !!value
+  // Handle input change (typing)
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newQuery = event.target.value
+    const wasSearching = !!searchQuery
+    const hadValue = !!value
 
-    // 1. User starts typing on a selected product (initiate search)
-    if (newQuery && !wasSearching && hadValue) {
-      isSearchingRef.current = true
-      onSearchStart?.()
-      // Clear the productId immediately to allow searching and display the query
-      onChange('')
-    }
+    // Mark that user is typing
+    isTypingRef.current = true
+    // Clear typing flag after a delay (to allow barcode scanner to work after typing stops)
+    setTimeout(() => {
+      isTypingRef.current = false
+    }, 500)
 
-    setSearchQuery(newQuery)
-    setIsOpen(true)
+    // 1. User starts typing on a selected product (initiate search)
+    if (newQuery && !wasSearching && hadValue) {
+      isSearchingRef.current = true
+      onSearchStart?.()
+      // Clear the productId immediately to allow searching and display the query
+      onChange('')
+    }
 
-    // 2. User clears the search query completely
-    if (!newQuery) {
-      // If they were searching, stop searching and notify parent
-      if (isSearchingRef.current) {
-        isSearchingRef.current = false
-        onSearchEnd?.()
-      }
-      // In all cases, if the input is cleared, clear the selected product ID
-      onChange('')
-    }
-  }
+    setSearchQuery(newQuery)
+    setIsOpen(true)
+
+    // 2. User clears the search query completely
+    if (!newQuery) {
+      // If they were searching, stop searching and notify parent
+      if (isSearchingRef.current) {
+        isSearchingRef.current = false
+        onSearchEnd?.()
+      }
+      // In all cases, if the input is cleared, clear the selected product ID
+      onChange('')
+      // Clear typing flag when input is cleared
+      isTypingRef.current = false
+    }
+  }
   
-  // Handle input focus
-  const handleFocus = () => {
-    setIsOpen(true)
-    // If a product is already selected, clear the search query
-    // This ensures that if they start typing, the handleInputChange logic runs correctly
-    if (value && !searchQuery) {
-      setSearchQuery('')
-    }
-  }
+  // Handle input focus
+  const handleFocus = () => {
+    isFocusedRef.current = true
+    setIsOpen(true)
+    // If a product is already selected, clear the search query
+    // This ensures that if they start typing, the handleInputChange logic runs correctly
+    if (value && !searchQuery) {
+      setSearchQuery('')
+    }
+  }
 
   // Auto-focus on mount if autoFocus prop is true
   useEffect(() => {
@@ -165,29 +172,70 @@ export const LazyProductPicker = forwardRef<LazyProductPickerRef, LazyProductPic
     }
   }, [autoFocus])
 
+  // Handle item selection
+  const handleSelect = useCallback((productId: string) => {
+    isSearchingRef.current = false
+    isTypingRef.current = false
+    onSearchEnd?.() // Notify search ended
+    onChange(productId) // Update product ID
+    setIsOpen(false) // Close dropdown
+    setSearchQuery('') // Clear search query to show selected product's full name/price
+    inputRef.current?.blur() // Remove focus from the input
+  }, [onChange, onSearchEnd])
+
+  // Handle barcode scanning when input is focused
+  const handleBarcodeScan = useCallback(async (barcode: string) => {
+    // Only process barcode if input is focused and user is not currently typing
+    if (!isFocusedRef.current || isTypingRef.current) {
+      return
+    }
+
+    // Also check if there's a search query (double-check)
+    // Use a ref to get the latest searchQuery value
+    const currentSearchQuery = inputRef.current?.value || ''
+    if (currentSearchQuery.trim()) {
+      return
+    }
+
+    // Search for product by exact barcode match
+    const product = await db.products
+      .filter((p) => p.barcode?.toLowerCase() === barcode.toLowerCase() && !p.isArchived)
+      .first()
+
+    if (product) {
+      // Product found - automatically select it
+      handleSelect(product.id)
+    }
+    // If product not found, do nothing (user can continue typing)
+  }, [handleSelect]) // Include handleSelect in deps
+
+  // Use barcode scanner hook
+  useBarcodeScanner(handleBarcodeScan)
+
   // Handle input blur
   const handleBlur = () => {
-    // Use setTimeout to allow the item selection (handleSelect) to register
-    setTimeout(() => {
-      // Check if the dropdown is still open (i.e., focus moved outside of the whole component)
-      if (document.activeElement?.closest('.relative') !== inputRef.current?.parentElement?.parentElement) {
-        setIsOpen(false)
-        // If the user was searching and didn't select anything, restore the previous value (if any) or clear the query.
-        if (isSearchingRef.current) {
-          isSearchingRef.current = false
-          onSearchEnd?.()
-        }
-        
-        // Restore selected product display by clearing search query
-        if (value) {
-          setSearchQuery('')
-        } else if (!value) {
-          // If nothing selected, clear any remaining query
-          setSearchQuery('')
-        }
-      }
-    }, 150) // Short delay
-  }
+    isFocusedRef.current = false
+    // Use setTimeout to allow the item selection (handleSelect) to register
+    setTimeout(() => {
+      // Check if the dropdown is still open (i.e., focus moved outside of the whole component)
+      if (document.activeElement?.closest('.relative') !== inputRef.current?.parentElement?.parentElement) {
+        setIsOpen(false)
+        // If the user was searching and didn't select anything, restore the previous value (if any) or clear the query.
+        if (isSearchingRef.current) {
+          isSearchingRef.current = false
+          onSearchEnd?.()
+        }
+        
+        // Restore selected product display by clearing search query
+        if (value) {
+          setSearchQuery('')
+        } else if (!value) {
+          // If nothing selected, clear any remaining query
+          setSearchQuery('')
+        }
+      }
+    }, 150) // Short delay
+  }
 
   return (
     <div className="relative">

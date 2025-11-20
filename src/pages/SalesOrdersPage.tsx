@@ -20,7 +20,6 @@ import { Pagination } from '../components/Pagination'
 import Datepicker from 'react-tailwindcss-datepicker'
 import { getTaxSettings, calculateTax, COMMON_GST_RATES, INDIAN_STATES, type TaxSettings } from '../utils/taxSettings'
 import { getProduct, getCustomer } from '../db/localDataService'
-import { useBarcodeScanner } from '../sensors/useBarcodeScanner'
 import { salesOrderSchema, type SalesOrderFormValues } from '../utils/validationSchemas'
 import { getOrderSettings } from '../utils/orderSettings'
 import type { Customer } from '../db/schema'
@@ -416,46 +415,6 @@ export const SalesOrdersPage = () => {
               }
             }, [values.customerId, setFieldValue])
 
-            // Handle barcode scanning
-            const handleBarcodeScan = async (barcode: string) => {
-              if (!barcode.trim() || !formikRef.current) return
-
-              const product = await db.products
-                .filter((p) => p.barcode?.toLowerCase() === barcode.toLowerCase() && !p.isArchived)
-                .first()
-
-              if (!product) {
-                console.warn(`Product with barcode "${barcode}" not found`)
-                return
-              }
-
-              const lineItems = values.lineItems || []
-              const existingItemIndex = lineItems.findIndex((item) => item.productId === product.id)
-
-              if (existingItemIndex >= 0) {
-                const currentQty = lineItems[existingItemIndex]?.quantity || 1
-                setFieldValue(`lineItems.${existingItemIndex}.quantity`, currentQty + 1)
-              } else {
-                const unitPrice = product.salePrice ?? product.price ?? 0
-                const emptyItemIndex = lineItems.findIndex((item) => !item.productId)
-                const hasEmptyItem = lineItems.some((item) => !item.productId)
-
-                if (emptyItemIndex >= 0) {
-                  setFieldValue(`lineItems.${emptyItemIndex}.productId`, product.id)
-                  setFieldValue(`lineItems.${emptyItemIndex}.unitPrice`, unitPrice)
-                  setFieldValue(`lineItems.${emptyItemIndex}.discount`, 0)
-                } else {
-                  const newItems = [...lineItems, { productId: product.id, quantity: 1, unitPrice, discount: 0 }]
-                  if (!hasEmptyItem) {
-                    newItems.push({ productId: '', quantity: 1, unitPrice: 0, discount: 0 })
-                  }
-                  setFieldValue('lineItems', newItems)
-                }
-              }
-            }
-
-            useBarcodeScanner(handleBarcodeScan)
-
             const lineItems = values.lineItems || []
             const subtotal = useMemo(
               () =>
@@ -658,7 +617,7 @@ export const SalesOrdersPage = () => {
                                     setShowProductModal(true)
                                     
                                   }}
-                                  placeholder="Search products..."
+                                  placeholder="Search products or scan barcode..."
                                 />
                               </div>
                               </div>
