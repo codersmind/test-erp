@@ -7,7 +7,11 @@ import { useCustomersPaginated } from '../hooks/useCustomersPaginated'
 import { Pagination } from '../components/Pagination'
 import { CustomerEditModal } from '../components/CustomerEditModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
+import { ExportDropdown } from '../components/ExportDropdown'
 import type { Customer, CustomerType } from '../db/schema'
+import { listCustomersByType } from '../db/localDataService'
+import { exportCustomersToExcel, exportCustomersToCSV } from '../utils/exportUtils'
+import type { DateFilter } from '../utils/exportUtils'
 
 const PAGE_SIZE = 20
 
@@ -66,6 +70,42 @@ export const CustomersPage = () => {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to delete customer. They may be referenced in existing orders, invoices, or payments.')
         setShowErrorDialog(true)
       }
+    }
+  }
+
+  const handleExportExcel = async (dateFilter?: DateFilter) => {
+    try {
+      const allCustomers = await listCustomersByType(activeTab)
+      const filename = activeTab === 'customer' ? 'customers' : 'suppliers'
+      await exportCustomersToExcel(allCustomers, filename, dateFilter)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export to Excel.')
+      setShowErrorDialog(true)
+    }
+  }
+
+  const handleExportCSV = async (dateFilter?: DateFilter) => {
+    try {
+      const allCustomers = await listCustomersByType(activeTab)
+      const filename = activeTab === 'customer' ? 'customers' : 'suppliers'
+      await exportCustomersToCSV(allCustomers, filename, dateFilter)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export to CSV.')
+      setShowErrorDialog(true)
+    }
+  }
+
+  const handleExportBoth = async (dateFilter?: DateFilter) => {
+    try {
+      const allCustomers = await listCustomersByType(activeTab)
+      const filename = activeTab === 'customer' ? 'customers' : 'suppliers'
+      await Promise.all([
+        exportCustomersToExcel(allCustomers, filename, dateFilter),
+        exportCustomersToCSV(allCustomers, filename, dateFilter),
+      ])
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export.')
+      setShowErrorDialog(true)
     }
   }
 
@@ -172,13 +212,20 @@ export const CustomersPage = () => {
               </button>
             </div>
           </div>
-          <div className="flex-1 sm:max-w-xs">
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder={`Search ${activeTab === 'customer' ? 'customers' : 'suppliers'}...`}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          <div className="flex flex-1 items-center gap-2 sm:max-w-lg">
+            <div className="flex-1">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => handleSearchChange(event.target.value)}
+                placeholder={`Search ${activeTab === 'customer' ? 'customers' : 'suppliers'}...`}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <ExportDropdown
+              onExportExcel={handleExportExcel}
+              onExportCSV={handleExportCSV}
+              onExportBoth={handleExportBoth}
             />
           </div>
         </div>

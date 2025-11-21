@@ -12,13 +12,16 @@ import { LazyProductPicker, type LazyProductPickerRef } from '../components/Lazy
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
 import { InvoicePrint } from '../components/InvoicePrint'
+import { ExportDropdown } from '../components/ExportDropdown'
 import Datepicker from 'react-tailwindcss-datepicker'
 import { db } from '../db/database'
-import { getProduct, getCustomer } from '../db/localDataService'
+import { getProduct, getCustomer, listPurchaseOrders } from '../db/localDataService'
 import { getPurchaseOrderSettings } from '../utils/purchaseOrderSettings'
 import { purchaseOrderSchema, type PurchaseOrderFormValues } from '../utils/validationSchemas'
 import { getOrderSettings } from '../utils/orderSettings'
 import type { PurchaseOrder, PurchaseOrderItem } from '../db/schema'
+import { exportPurchaseOrdersToExcel, exportPurchaseOrdersToCSV } from '../utils/exportUtils'
+import type { DateFilter } from '../utils/exportUtils'
 
 const PAGE_SIZE = 20
 
@@ -234,6 +237,39 @@ export const PurchaseOrdersPage = () => {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to delete purchase order.')
         setShowErrorDialog(true)
       }
+    }
+  }
+
+  const handleExportExcel = async (dateFilter?: DateFilter) => {
+    try {
+      const allOrders = await listPurchaseOrders()
+      await exportPurchaseOrdersToExcel(allOrders, 'purchase_orders', dateFilter)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export to Excel.')
+      setShowErrorDialog(true)
+    }
+  }
+
+  const handleExportCSV = async (dateFilter?: DateFilter) => {
+    try {
+      const allOrders = await listPurchaseOrders()
+      await exportPurchaseOrdersToCSV(allOrders, 'purchase_orders', dateFilter)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export to CSV.')
+      setShowErrorDialog(true)
+    }
+  }
+
+  const handleExportBoth = async (dateFilter?: DateFilter) => {
+    try {
+      const allOrders = await listPurchaseOrders()
+      await Promise.all([
+        exportPurchaseOrdersToExcel(allOrders, 'purchase_orders', dateFilter),
+        exportPurchaseOrdersToCSV(allOrders, 'purchase_orders', dateFilter),
+      ])
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export.')
+      setShowErrorDialog(true)
     }
   }
 
@@ -732,6 +768,11 @@ export const PurchaseOrdersPage = () => {
                 Clear
               </button>
             )}
+            <ExportDropdown
+              onExportExcel={handleExportExcel}
+              onExportCSV={handleExportCSV}
+              onExportBoth={handleExportBoth}
+            />
           </div>
         </div>
         <div className="mt-4 overflow-x-auto">

@@ -17,12 +17,15 @@ import { SalesOrderPrintModal } from '../components/SalesOrderPrintModal'
 import { LazyProductPicker, type LazyProductPickerRef } from '../components/LazyProductPicker'
 import { LazyCustomerPicker } from '../components/LazyCustomerPicker'
 import { Pagination } from '../components/Pagination'
+import { ExportDropdown } from '../components/ExportDropdown'
 import Datepicker from 'react-tailwindcss-datepicker'
 import { getTaxSettings, calculateTax, COMMON_GST_RATES, INDIAN_STATES, type TaxSettings } from '../utils/taxSettings'
-import { getProduct, getCustomer } from '../db/localDataService'
+import { getProduct, getCustomer, listSalesOrders } from '../db/localDataService'
 import { salesOrderSchema, type SalesOrderFormValues } from '../utils/validationSchemas'
 import { getOrderSettings } from '../utils/orderSettings'
 import type { Customer } from '../db/schema'
+import { exportSalesOrdersToExcel, exportSalesOrdersToCSV } from '../utils/exportUtils'
+import type { DateFilter } from '../utils/exportUtils'
 
 const PAGE_SIZE = 20
 
@@ -241,6 +244,39 @@ export const SalesOrdersPage = () => {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to delete sales order. It may be referenced in invoices.')
         setShowErrorDialog(true)
       }
+    }
+  }
+
+  const handleExportExcel = async (dateFilter?: DateFilter) => {
+    try {
+      const allOrders = await listSalesOrders()
+      await exportSalesOrdersToExcel(allOrders, 'sales_orders', dateFilter)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export to Excel.')
+      setShowErrorDialog(true)
+    }
+  }
+
+  const handleExportCSV = async (dateFilter?: DateFilter) => {
+    try {
+      const allOrders = await listSalesOrders()
+      await exportSalesOrdersToCSV(allOrders, 'sales_orders', dateFilter)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export to CSV.')
+      setShowErrorDialog(true)
+    }
+  }
+
+  const handleExportBoth = async (dateFilter?: DateFilter) => {
+    try {
+      const allOrders = await listSalesOrders()
+      await Promise.all([
+        exportSalesOrdersToExcel(allOrders, 'sales_orders', dateFilter),
+        exportSalesOrdersToCSV(allOrders, 'sales_orders', dateFilter),
+      ])
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export.')
+      setShowErrorDialog(true)
     }
   }
   const latestItems = useLiveQuery(
@@ -1084,6 +1120,11 @@ export const SalesOrdersPage = () => {
                 Clear
               </button>
             )}
+            <ExportDropdown
+              onExportExcel={handleExportExcel}
+              onExportCSV={handleExportCSV}
+              onExportBoth={handleExportBoth}
+            />
           </div>
         </div>
         <div className="mt-4 overflow-x-auto">
