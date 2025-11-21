@@ -517,7 +517,28 @@ const createWindow = async () => {
       preload: MAIN_WINDOW_PRELOAD_VITE_ENTRY ?? join(__dirname, '../preload/index.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: true,
+      // Suppress CSP warning - we handle CSP via meta tag in HTML
+      enableWebSecurity: true,
     },
+  })
+  
+  // Set Content Security Policy via session
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details: any, callback: any) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data: https:; " +
+          "font-src 'self' data:; " +
+          "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com https://*.google.com wss://*.firebaseio.com; " +
+          "frame-src 'self' https://*.google.com https://*.firebaseapp.com;"
+        ],
+      },
+    })
   })
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -535,12 +556,174 @@ const createWindow = async () => {
   
 
   mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
+    // Allow Firebase authentication popups
+    const urlObj = new URL(url)
+    const isFirebaseAuth = urlObj.hostname.includes('firebaseapp.com') || 
+                          urlObj.hostname.includes('googleapis.com') ||
+                          urlObj.hostname.includes('accounts.google.com') ||
+                          urlObj.hostname.includes('google.com')
+    
+    if (isFirebaseAuth) {
+      // Allow popup for Firebase auth - Electron will create the window
+      return { action: 'allow' }
+    }
+    
+    // For other URLs, open in external browser
     shell.openExternal(url)
     return { action: 'deny' }
   })
 }
 
+// WhatsApp Handlers
+let whatsappClient: any = null
+let whatsappQRCode: string | null = null
+let isInitialized = false
+
+const setupWhatsAppHandlers = () => {
+  ipcMain.handle('whatsapp:initialize', async (_event: any, options: { sessionPath?: string }) => {
+    try {
+      // Dynamically import wwebjs-electron only when needed
+      const { Client, LocalAuth } = require('wwebjs-electron')
+
+      if (whatsappClient) {
+        await whatsappClient.destroy()
+      }
+
+      const sessionPath = options.sessionPath || join(app.getPath('userData'), 'whatsapp-session')
+
+      whatsappClient = new Client({
+        authStrategy: new LocalAuth({
+          dataPath: sessionPath,
+        }),
+        puppeteer: {
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        },
+      })
+
+      whatsappClient.on('qr', (qr: string) => {
+        // wwebjs-electron returns QR code as base64 string, store it as is
+        whatsappQRCode = qr
+        // Send QR code to all windows
+        BrowserWindow.getAllWindows().forEach((window: any) => {
+          window.webContents.send('whatsapp:qr', qr)
+        })
+      })
+
+      whatsappClient.on('ready', () => {
+        isInitialized = true
+        whatsappQRCode = null
+        BrowserWindow.getAllWindows().forEach((window: any) => {
+          window.webContents.send('whatsapp:ready')
+        })
+      })
+
+      whatsappClient.on('authenticated', () => {
+        isInitialized = true
+        whatsappQRCode = null
+      })
+
+      whatsappClient.on('auth_failure', (msg: string) => {
+        console.error('WhatsApp authentication failed:', msg)
+        isInitialized = false
+        BrowserWindow.getAllWindows().forEach((window: any) => {
+          window.webContents.send('whatsapp:auth_failure', msg)
+        })
+      })
+
+      whatsappClient.on('disconnected', () => {
+        isInitialized = false
+        BrowserWindow.getAllWindows().forEach((window: any) => {
+          window.webContents.send('whatsapp:disconnected')
+        })
+      })
+
+      await whatsappClient.initialize()
+
+      return {
+        success: true,
+        connected: whatsappClient.info !== undefined,
+      }
+    } catch (error: any) {
+      console.error('WhatsApp initialization error:', error)
+      return {
+        success: false,
+        error: error.message || 'Failed to initialize WhatsApp',
+      }
+    }
+  })
+
+  ipcMain.handle('whatsapp:getQR', async () => {
+    return { qrCode: whatsappQRCode }
+  })
+
+  ipcMain.handle('whatsapp:checkConnection', async () => {
+    try {
+      if (!whatsappClient) {
+        return { connected: false }
+      }
+
+      const info = whatsappClient.info
+      return { connected: !!info }
+    } catch (error) {
+      return { connected: false }
+    }
+  })
+
+  ipcMain.handle('whatsapp:sendMessage', async (_event: any, options: { to: string; message: string; mediaPath?: string; caption?: string }) => {
+    try {
+      if (!whatsappClient || !isInitialized) {
+        throw new Error('WhatsApp client is not initialized')
+      }
+
+      const { to, message, mediaPath, caption } = options
+
+      // Format phone number (remove + and add @c.us for WhatsApp)
+      let phoneNumber = to.replace(/\D/g, '')
+      if (!phoneNumber.startsWith('91') && phoneNumber.length === 10) {
+        phoneNumber = `91${phoneNumber}`
+      }
+      const chatId = `${phoneNumber}@c.us`
+
+      if (mediaPath) {
+        const { MessageMedia } = require('wwebjs-electron')
+        const media = MessageMedia.fromFilePath(mediaPath)
+        await whatsappClient.sendMessage(chatId, media, { caption: caption || message })
+      } else {
+        await whatsappClient.sendMessage(chatId, message)
+      }
+
+      return { success: true }
+    } catch (error: any) {
+      console.error('Error sending WhatsApp message:', error)
+      return {
+        success: false,
+        error: error.message || 'Failed to send message',
+      }
+    }
+  })
+
+  ipcMain.handle('whatsapp:disconnect', async () => {
+    try {
+      if (whatsappClient) {
+        await whatsappClient.destroy()
+        whatsappClient = null
+        isInitialized = false
+        whatsappQRCode = null
+      }
+      return { success: true }
+    } catch (error: any) {
+      console.error('Error disconnecting WhatsApp:', error)
+      return {
+        success: false,
+        error: error.message || 'Failed to disconnect',
+      }
+    }
+  })
+}
+
 app.whenReady().then(() => {
+  setupWhatsAppHandlers()
   createWindow()
   
   // Initialize auto-updater after window is ready (only in production)
@@ -821,6 +1004,86 @@ ipcMain.handle('printer:show-dialog', async () => {
     return { success: false, error: 'No printer selected' }
   } catch (error: any) {
     return { success: false, error: error.message }
+  }
+})
+
+// PDF Generation Handler
+ipcMain.handle('generate:pdf', async (_event: any, options: { html: string; filename: string }) => {
+  try {
+    const { join } = require('path')
+    const { writeFileSync } = require('fs')
+    const { app } = require('electron')
+    
+    // Try to use puppeteer-core if available, otherwise use electron's webContents
+    let pdfBuffer: Buffer
+    
+    try {
+      const puppeteer = require('puppeteer-core')
+      const executablePath = puppeteer.executablePath()
+      
+      const browser = await puppeteer.launch({
+        executablePath,
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      })
+
+      const page = await browser.newPage()
+      await page.setContent(options.html, { waitUntil: 'networkidle0' })
+
+      pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '20mm',
+          right: '15mm',
+          bottom: '20mm',
+          left: '15mm',
+        },
+      })
+
+      await browser.close()
+    } catch (puppeteerError) {
+      // Fallback: Use a hidden BrowserWindow to print to PDF
+      const { BrowserWindow } = require('electron')
+      const pdfWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      })
+
+      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(options.html)}`)
+      
+      await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait for content to load
+      
+      pdfBuffer = await pdfWindow.webContents.printToPDF({
+        printBackground: true,
+        margins: {
+          top: 0.79,
+          right: 0.59,
+          bottom: 0.79,
+          left: 0.59,
+        },
+      })
+
+      pdfWindow.close()
+    }
+
+    // Save PDF to temp directory
+    const tempPath = join(app.getPath('temp'), options.filename)
+    writeFileSync(tempPath, pdfBuffer)
+
+    return {
+      success: true,
+      filePath: tempPath,
+    }
+  } catch (error: any) {
+    console.error('PDF generation error:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to generate PDF',
+    }
   }
 })
 

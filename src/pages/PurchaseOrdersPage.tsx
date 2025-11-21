@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Formik, FieldArray } from 'formik'
-import { FileText, Printer, Trash2, X, GripVertical } from 'lucide-react'
+import { FileText, Printer, Trash2, X, GripVertical, MessageSquare } from 'lucide-react'
 
 import { useCreatePurchaseOrder, useUpdatePurchaseOrderStatus, useUpdatePurchaseOrderNotes, useDeletePurchaseOrder } from '../hooks/usePurchaseOrders'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -22,15 +22,21 @@ import { getOrderSettings } from '../utils/orderSettings'
 import type { PurchaseOrder, PurchaseOrderItem } from '../db/schema'
 import { exportPurchaseOrdersToExcel, exportPurchaseOrdersToCSV } from '../utils/exportUtils'
 import type { DateFilter } from '../utils/exportUtils'
+import { whatsappService } from '../services/whatsappService'
+import { getIntegrationSettings } from '../utils/integrationSettings'
+import type { Customer } from '../db/schema'
 
 const PAGE_SIZE = 20
 
 // Component to render a purchase order row with items
 const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete: (id: string) => void }) => {
   const [items, setItems] = useState<PurchaseOrderItem[]>([])
+  const [supplier, setSupplier] = useState<Customer | null>(null)
   const [showPrint, setShowPrint] = useState(false)
   const [showNote, setShowNote] = useState(false)
   const [noteText, setNoteText] = useState(order.notes || '')
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false)
+  const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(false)
   const updateStatus = useUpdatePurchaseOrderStatus()
   const updateNotes = useUpdatePurchaseOrderNotes()
 
@@ -38,9 +44,48 @@ const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete:
     const loadData = async () => {
       const orderItems = await db.purchaseOrderItems.where('orderId').equals(order.id).toArray()
       setItems(orderItems)
+      
+      // Try to find supplier by name (suppliers are stored as customers with type 'supplier')
+      if (order.supplierName) {
+        const suppliers = await db.customers
+          .where('type')
+          .equals('supplier')
+          .and((c) => c.name === order.supplierName && !c.isArchived)
+          .toArray()
+        if (suppliers.length > 0) {
+          setSupplier(suppliers[0])
+        }
+      }
+      
+      // Check WhatsApp connection status
+      const checkConnection = async () => {
+        try {
+          const isConnected = await whatsappService.checkConnection()
+          setIsWhatsAppConnected(isConnected)
+        } catch (error) {
+          setIsWhatsAppConnected(false)
+        }
+      }
+      checkConnection()
+      
+      // Set up listeners for connection status changes
+      if ((window as any).electronWhatsApp) {
+        const electronWhatsApp = (window as any).electronWhatsApp
+        const unsubscribeReady = electronWhatsApp.onReady(() => {
+          setIsWhatsAppConnected(true)
+        })
+        const unsubscribeDisconnected = electronWhatsApp.onDisconnected(() => {
+          setIsWhatsAppConnected(false)
+        })
+        
+        return () => {
+          unsubscribeReady()
+          unsubscribeDisconnected()
+        }
+      }
     }
     loadData()
-  }, [order.id])
+  }, [order.id, order.supplierName])
 
   useEffect(() => {
     setNoteText(order.notes || '')
@@ -49,6 +94,34 @@ const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete:
   const handleSaveNote = async () => {
     await updateNotes.mutateAsync({ id: order.id, notes: noteText })
     setShowNote(false)
+  }
+
+  const handleSendWhatsApp = async () => {
+    if (!supplier) {
+      alert('Supplier information not available. Please ensure the supplier is added as a customer with type "supplier".')
+      return
+    }
+
+    if (!supplier.phone) {
+      alert('Supplier phone number is required. Please update the supplier contact information.')
+      return
+    }
+
+    setIsSendingWhatsApp(true)
+    try {
+      const settings = await getIntegrationSettings()
+      if (!settings.whatsapp.enabled) {
+        alert('WhatsApp integration is not enabled. Please enable it in Settings > Integration.')
+        return
+      }
+
+      await whatsappService.sendPurchaseOrderInvoice(order, items, supplier, settings.whatsapp)
+      alert('Purchase order sent via WhatsApp successfully!')
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to send purchase order via WhatsApp')
+    } finally {
+      setIsSendingWhatsApp(false)
+    }
   }
 
   return (
@@ -123,6 +196,18 @@ const PurchaseOrderRow = ({ order, onDelete }: { order: PurchaseOrder; onDelete:
                 </>
               )}
             </button>
+            {isWhatsAppConnected && whatsappService.isValidPhoneNumber(supplier?.phone) && (
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                disabled={isSendingWhatsApp}
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-green-600 transition-colors hover:bg-green-50 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 dark:text-green-400 dark:hover:bg-green-900/20 dark:hover:text-green-300"
+                title="Send Purchase Order via WhatsApp"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{isSendingWhatsApp ? 'Sending...' : 'Send WhatsApp'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onDelete(order.id)}
