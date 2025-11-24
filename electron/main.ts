@@ -582,10 +582,36 @@ const startLocalServer = (retryCount: number = 0): Promise<number> => {
       
       filePath = resolvedPath
 
+      // Check if file exists
       if (!existsSync(filePath)) {
-        res.writeHead(404)
-        res.end('File not found')
-        return
+        // For SPA routing: if the path doesn't exist and doesn't have a file extension,
+        // serve index.html to let React Router handle the route
+        // Check if the path has a file extension (excluding query strings)
+        const pathWithoutQuery = urlPath.split('?')[0]
+        const hasFileExtension = /\.\w+$/.test(pathWithoutQuery)
+        
+        // Also check if it's a static asset path (assets/, _vite/, etc.)
+        const isStaticAsset = pathWithoutQuery.startsWith('assets/') || 
+                             pathWithoutQuery.startsWith('_vite/') ||
+                             pathWithoutQuery.startsWith('node_modules/')
+        
+        if (!hasFileExtension && !isStaticAsset) {
+          // This is likely a client-side route (e.g., /settings, /customers)
+          // Serve index.html to let React Router handle the routing
+          filePath = join(rendererPath, 'index.html')
+          // Re-resolve the path for security check
+          filePath = resolve(filePath)
+          if (!existsSync(filePath)) {
+            res.writeHead(404)
+            res.end('File not found')
+            return
+          }
+        } else {
+          // File with extension or static asset doesn't exist, return 404
+          res.writeHead(404)
+          res.end('File not found')
+          return
+        }
       }
 
       try {

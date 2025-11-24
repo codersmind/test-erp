@@ -5,7 +5,9 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     appBundleId: 'com.ponytory.erp', 
-    asar: true,
+    asar: {
+      unpackDir: 'node_modules/wwebjs-electron',
+    },
     executableName: 'ponytory-erp',
     // App icon configuration
     // Place your icon files in assets/icons/ directory:
@@ -13,11 +15,6 @@ module.exports = {
     // - icon.icns (macOS - 512x512 recommended)
     // - icon.png (Linux - 512x512 recommended)
     icon: './assets/icons/icon', // Path without extension, Electron will auto-detect .ico, .icns, .png
-    // Ensure electron-updater and its dependencies are included and unpacked from ASAR
-    // asar: {
-    //   unpack: '*.{node,dll}',
-    //   unpackDir: 'node_modules/electron-updater',
-    // },
   },
   rebuildConfig: {},
   makers: [

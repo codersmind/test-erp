@@ -14,7 +14,7 @@ export default defineConfig({
         format: 'cjs',
         entryFileNames: 'index.cjs',
       },
-      external: [...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`), 'electron', 'keytar', 'electron-updater'],
+      external: [...builtinModules, ...builtinModules.map((moduleName) => `node:${moduleName}`), 'electron', 'keytar', 'electron-updater', 'wwebjs-electron'],
     },
     emptyOutDir: false,
   },
