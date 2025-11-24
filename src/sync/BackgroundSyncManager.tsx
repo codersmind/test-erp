@@ -11,7 +11,12 @@ export const BackgroundSyncManager = () => {
   const lastSyncResult = useRef<'success' | 'error' | null>(null)
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
+    // Service workers don't work with file:// protocol in Electron
+    // Skip registration in Electron/production mode
+    const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron')
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:'
+    
+    if (!isElectron && !isFileProtocol && 'serviceWorker' in navigator) {
       navigator.serviceWorker
         .register(SERVICE_WORKER_PATH)
         .catch((error) => console.warn('Service worker registration failed', error))

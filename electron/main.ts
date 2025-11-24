@@ -1,5 +1,8 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
-const { join } = require('node:path')
+const { join, resolve } = require('node:path')
+const { createServer } = require('http')
+const { readFileSync, existsSync } = require('fs')
+const { extname } = require('path')
 
 // Handle Squirrel events (required for Squirrel.Windows installer)
 // This MUST be at the very top before any app initialization
@@ -485,10 +488,142 @@ try {
 }
 
 // === Environment Variables ===
-const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
-// const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
+// Only use dev server URL if explicitly set (not in production builds)
+// In production, process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL is undefined
+// const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
+const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
 const MAIN_WINDOW_VITE_NAME = process.env.MAIN_WINDOW_VITE_NAME || 'main_window'
 const MAIN_WINDOW_PRELOAD_VITE_ENTRY = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY
+
+// Local HTTP server for production (required for Firebase Auth)
+let localServer: any = null
+let localServerPort = 5174 // Use a different port than dev server
+const MAX_PORT_RETRIES = 10 // Maximum number of port retry attempts
+
+// Start local HTTP server to serve static files in production
+const startLocalServer = (retryCount: number = 0): Promise<number> => {
+  return new Promise((resolvePromise, reject) => {
+    if (localServer) {
+      resolvePromise(localServerPort)
+      return
+    }
+
+    // Check if we've exceeded the maximum retry limit
+    if (retryCount >= MAX_PORT_RETRIES) {
+      reject(new Error(`Failed to start local server: Could not find an available port after ${MAX_PORT_RETRIES} attempts`))
+      return
+    }
+
+    const rendererPath = join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`)
+    
+    const mimeTypes: { [key: string]: string } = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.ico': 'image/x-icon',
+      '.webp': 'image/webp',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+      '.ttf': 'font/ttf',
+      '.eot': 'application/vnd.ms-fontobject',
+      '.wasm': 'application/wasm',
+      '.map': 'application/json',
+      '.txt': 'text/plain',
+      '.xml': 'application/xml',
+      '.pdf': 'application/pdf',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+    }
+
+    localServer = createServer((req: any, res: any) => {
+      // Normalize the URL path - remove leading slash and query string
+      let urlPath = req.url === '/' ? 'index.html' : req.url.split('?')[0]
+      // Remove leading slash to make it relative
+      if (urlPath.startsWith('/')) {
+        urlPath = urlPath.substring(1)
+      }
+      
+      // Handle empty path (e.g., from query-only URLs like /?foo=bar)
+      // After removing leading slash, empty string means root path
+      if (!urlPath || urlPath === '') {
+        urlPath = 'index.html'
+      }
+      
+      // Join with renderer path (now urlPath is relative, so join works correctly)
+      let filePath = join(rendererPath, urlPath)
+      
+      // Security: prevent directory traversal
+      // Resolve to absolute path to handle .. and . segments
+      const resolvedPath = resolve(filePath)
+      const resolvedRendererPath = resolve(rendererPath)
+      
+      // Verify path is within renderer directory by checking:
+      // 1. Path equals renderer path, OR
+      // 2. Path starts with renderer path followed by path separator
+      // This prevents prefix matching attacks (e.g., /app/render vs /app/renderer)
+      const path = require('path')
+      const pathSeparator = path.sep
+      const isWithinRenderer = resolvedPath === resolvedRendererPath || 
+        resolvedPath.startsWith(resolvedRendererPath + pathSeparator)
+      
+      if (!isWithinRenderer) {
+        res.writeHead(403)
+        res.end('Forbidden')
+        return
+      }
+      
+      filePath = resolvedPath
+
+      if (!existsSync(filePath)) {
+        res.writeHead(404)
+        res.end('File not found')
+        return
+      }
+
+      try {
+        const fileContent = readFileSync(filePath)
+        const ext = extname(filePath)
+        const contentType = mimeTypes[ext] || 'application/octet-stream'
+
+        res.writeHead(200, { 'Content-Type': contentType })
+        res.end(fileContent)
+      } catch (error: any) {
+        console.error('Error serving file:', error)
+        res.writeHead(500)
+        res.end('Internal server error')
+      }
+    })
+
+    localServer.listen(localServerPort, 'localhost', () => {
+      console.log(`Local server started on http://localhost:${localServerPort}`)
+      resolvePromise(localServerPort)
+    })
+
+    localServer.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        // Port in use, try next port
+        // Close the server first to properly release resources
+        if (localServer) {
+          localServer.close()
+        }
+        localServerPort++
+        localServer = null
+        // Recursively retry with incremented retry count
+        startLocalServer(retryCount + 1).then(resolvePromise).catch(reject)
+      } else {
+        reject(error)
+      }
+    })
+  })
+}
 
 let mainWindow: any = null
 
@@ -518,36 +653,45 @@ const createWindow = async () => {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-      // Suppress CSP warning - we handle CSP via meta tag in HTML
       enableWebSecurity: true,
     },
   })
   
-  // Set Content Security Policy via session
+  // Set Content Security Policy via session (for HTTP/HTTPS requests in dev mode)
   mainWindow.webContents.session.webRequest.onHeadersReceived((details: any, callback: any) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           "default-src 'self'; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.googleapis.com https://accounts.google.com; " +
           "style-src 'self' 'unsafe-inline'; " +
           "img-src 'self' data: https:; " +
           "font-src 'self' data:; " +
           "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com https://*.google.com wss://*.firebaseio.com; " +
-          "frame-src 'self' https://*.google.com https://*.firebaseapp.com;"
+          "frame-src 'self' https://*.google.com https://*.firebaseapp.com https://accounts.google.com;"
         ],
       },
     })
   })
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    await splash.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL + 'splash/index.html');
-    await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    // Normalize dev server URL to ensure it ends with a trailing slash
+    const devServerUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL.endsWith('/') 
+      ? MAIN_WINDOW_VITE_DEV_SERVER_URL 
+      : MAIN_WINDOW_VITE_DEV_SERVER_URL + '/'
+    
+    await splash.loadURL(devServerUrl + 'splash/index.html');
+    await mainWindow.loadURL(devServerUrl)
     mainWindow.webContents.openDevTools()
   } else {
-    await splash.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/splash/index.html`))
-    await mainWindow.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`))
+    // Start local HTTP server for production (required for Firebase Auth)
+    const port = await startLocalServer()
+    const localUrl = `http://localhost:${port}`
+    
+    await splash.loadURL(`${localUrl}/splash/index.html`)
+    await mainWindow.loadURL(localUrl)
+    // Note: DevTools disabled in production for security
   }
 
   
@@ -741,8 +885,22 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  // Clean up local server
+  if (localServer) {
+    localServer.close()
+    localServer = null
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('before-quit', () => {
+  // Clean up local server before quitting
+  if (localServer) {
+    localServer.close()
+    localServer = null
   }
 })
 

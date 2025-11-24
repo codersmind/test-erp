@@ -15,6 +15,20 @@ if (missing.length > 0) {
   )
 }
 
+// Detect if running in Electron
+const isElectron = typeof window !== 'undefined' && 
+  (window.navigator.userAgent.includes('Electron') || 
+   window.navigator.userAgent.includes('electron'))
+
+// Log current origin for debugging (especially important for Electron)
+if (typeof window !== 'undefined') {
+  console.log('Current origin:', window.location.origin)
+  console.log('Is Electron:', isElectron)
+  if (isElectron) {
+    console.log('For Firebase Auth to work, make sure "localhost" is added to Firebase authorized domains')
+  }
+}
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
