@@ -2,26 +2,11 @@ import { get, set } from 'idb-keyval'
 
 const INTEGRATION_SETTINGS_KEY = 'integration_settings'
 
-export interface WhatsAppSettings {
-  enabled: boolean
-  sessionPath?: string
-  isConnected: boolean
-  qrCode?: string
-  phoneNumber?: string
-  messageTemplate?: string
-}
-
 export interface IntegrationSettings {
-  whatsapp: WhatsAppSettings
+  // Reserved for future integrations
 }
 
-const defaultSettings: IntegrationSettings = {
-  whatsapp: {
-    enabled: false,
-    isConnected: false,
-    messageTemplate: 'Hello {{customerName}},\n\nYour invoice #{{invoiceNumber}} for ₹{{total}} is ready.\n\nThank you for your business!',
-  },
-}
+const defaultSettings: IntegrationSettings = {}
 
 export const getIntegrationSettings = async (): Promise<IntegrationSettings> => {
   try {
@@ -40,12 +25,6 @@ export const setIntegrationSettings = async (settings: IntegrationSettings): Pro
     console.error('Error saving integration settings:', error)
     throw error
   }
-}
-
-export const updateWhatsAppSettings = async (updates: Partial<WhatsAppSettings>): Promise<void> => {
-  const settings = await getIntegrationSettings()
-  settings.whatsapp = { ...settings.whatsapp, ...updates }
-  await setIntegrationSettings(settings)
 }
 
 

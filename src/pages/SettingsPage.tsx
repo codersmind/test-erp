@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
 
 import { db } from '../db/database'
 import { useSync } from '../sync/useSync'
@@ -70,12 +69,6 @@ import {
   setPrinterSettings,
   type PrinterSettings,
 } from '../utils/printerSettings'
-import {
-  getIntegrationSettings,
-  updateWhatsAppSettings,
-  type IntegrationSettings,
-} from '../utils/integrationSettings'
-import { whatsappService } from '../services/whatsappService'
 import { InvoiceTemplateEditor } from '../components/InvoiceTemplateEditor'
 
 type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'purchaseOrder' | 'integration' | 'danger'
@@ -177,15 +170,6 @@ export const SettingsPage = () => {
     defaultPrinterName: null,
     defaultPrinterDescription: null,
   })
-  const [integrationSettings, setIntegrationSettingsState] = useState<IntegrationSettings>({
-    whatsapp: {
-      enabled: false,
-      isConnected: false,
-      messageTemplate: 'Hello {{customerName}},\n\nYour invoice #{{invoiceNumber}} for ₹{{total}} is ready.\n\nThank you for your business!',
-    },
-  })
-  const [whatsappQRCode, setWhatsappQRCode] = useState<string | null>(null)
-  const [isConnectingWhatsApp, setIsConnectingWhatsApp] = useState(false)
   const [availablePrinters, setAvailablePrinters] = useState<Array<{
     name: string
     displayName: string
@@ -211,103 +195,8 @@ export const SettingsPage = () => {
     loadPrinterSettings()
     loadAvailablePrinters()
     loadLogo()
-    loadIntegrationSettings()
   }, [])
 
-  // Set up WhatsApp event listeners for real-time QR code updates
-  useEffect(() => {
-    if ((window as any).electronWhatsApp && integrationSettings.whatsapp.enabled) {
-      const electronWhatsApp = (window as any).electronWhatsApp
-      
-      const unsubscribeQR = electronWhatsApp.onQR((qr: string) => {
-        if (!qr) {
-          console.log('QR event received but QR is empty')
-          setWhatsappQRCode(null)
-          return
-        }
-        
-        console.log('QR event received, length:', qr.length, 'starts with:', qr.substring(0, 50))
-        
-        // If already a data URL, use as is
-        if (qr.startsWith('data:')) {
-          console.log('QR is already a data URL')
-          setWhatsappQRCode(qr)
-          return
-        }
-        
-        // Clean the QR code string
-        // First remove @ character (not valid base64)
-        let cleanedQR = qr.replace(/@/g, '')
-        
-        // Remove whitespace, commas, newlines
-        cleanedQR = cleanedQR.replace(/[\s\n\r,]/g, '')
-        
-        // Handle = characters - they might be separators or padding
-        const parts = cleanedQR.split('=')
-        if (parts.length > 1) {
-          // Join all parts (removing the = separators)
-          const joined = parts.join('')
-          // Calculate proper base64 padding (base64 strings must be multiple of 4)
-          const remainder = joined.length % 4
-          const padding = remainder ? '='.repeat(4 - remainder) : ''
-          cleanedQR = joined + padding
-        }
-        
-        console.log('Cleaned QR, length:', cleanedQR.length)
-        
-        // Check if it's long enough to be a base64 PNG image
-        // If it's too short, it's likely the QR code data, not the image
-        if (cleanedQR.length < 1000) {
-          console.log('QR code is too short for PNG, using as QR data string')
-          // Set as QR data string - it will be rendered using QRCodeSVG component
-          setWhatsappQRCode(cleanedQR)
-          return
-        }
-        
-        // Validate it's a valid base64 string
-        if (!/^[A-Za-z0-9+/=]+$/.test(cleanedQR)) {
-          console.error('Invalid QR code format after cleaning')
-          return
-        }
-        
-        // Format as data URL for PNG image
-        const formattedQR = `data:image/png;base64,${cleanedQR}`
-        console.log('Setting formatted QR code as image, length:', formattedQR.length)
-        setWhatsappQRCode(formattedQR)
-      })
-      
-      const unsubscribeReady = electronWhatsApp.onReady(() => {
-        setWhatsappQRCode(null)
-        setIntegrationSettingsState((prev) => ({
-          ...prev,
-          whatsapp: { ...prev.whatsapp, isConnected: true },
-        }))
-      })
-      
-      const unsubscribeAuthFailure = electronWhatsApp.onAuthFailure((msg: string) => {
-        console.error('WhatsApp auth failure:', msg)
-        setIntegrationSettingsState((prev) => ({
-          ...prev,
-          whatsapp: { ...prev.whatsapp, isConnected: false },
-        }))
-      })
-      
-      const unsubscribeDisconnected = electronWhatsApp.onDisconnected(() => {
-        setWhatsappQRCode(null)
-        setIntegrationSettingsState((prev) => ({
-          ...prev,
-          whatsapp: { ...prev.whatsapp, isConnected: false },
-        }))
-      })
-      
-      return () => {
-        unsubscribeQR()
-        unsubscribeReady()
-        unsubscribeAuthFailure()
-        unsubscribeDisconnected()
-      }
-    }
-  }, [integrationSettings.whatsapp.enabled])
 
   const loadLogo = async () => {
     const logoData = await getLogo()
@@ -349,22 +238,6 @@ export const SettingsPage = () => {
     setPrinterSettingsState(settings)
   }
 
-  const loadIntegrationSettings = async () => {
-    const settings = await getIntegrationSettings()
-    setIntegrationSettingsState(settings)
-    // Check WhatsApp connection status
-    if (settings.whatsapp.enabled) {
-      try {
-        const isConnected = await whatsappService.checkConnection()
-        setIntegrationSettingsState((prev) => ({
-          ...prev,
-          whatsapp: { ...prev.whatsapp, isConnected },
-        }))
-      } catch (error) {
-        console.error('Error checking WhatsApp connection:', error)
-      }
-    }
-  }
 
   const loadAvailablePrinters = async () => {
     if (!window.electronPrinter) return
@@ -2341,221 +2214,6 @@ export const SettingsPage = () => {
               </div>
             </section>
 
-            {/* WhatsApp Integration */}
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">WhatsApp Integration</h2>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={integrationSettings.whatsapp.enabled}
-                    onChange={async (e) => {
-                      const updated = {
-                        ...integrationSettings,
-                        whatsapp: { ...integrationSettings.whatsapp, enabled: e.target.checked },
-                      }
-                      setIntegrationSettingsState(updated)
-                      await updateWhatsAppSettings({ enabled: e.target.checked })
-                      if (e.target.checked) {
-                        setIsConnectingWhatsApp(true)
-                        try {
-                          await whatsappService.initialize(updated.whatsapp)
-                          const qrCode = await whatsappService.getQRCode()
-                          if (qrCode) {
-                            setWhatsappQRCode(qrCode)
-                          }
-                          const isConnected = await whatsappService.checkConnection()
-                          setIntegrationSettingsState((prev) => ({
-                            ...prev,
-                            whatsapp: { ...prev.whatsapp, isConnected },
-                          }))
-                        } catch (error) {
-                          console.error('Error initializing WhatsApp:', error)
-                        } finally {
-                          setIsConnectingWhatsApp(false)
-                        }
-                      } else {
-                        await whatsappService.disconnect()
-                        setWhatsappQRCode(null)
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900"
-                  />
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable WhatsApp</span>
-                </label>
-              </div>
-
-              {integrationSettings.whatsapp.enabled && (
-                <div className="mt-4 space-y-4">
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`inline-flex h-3 w-3 rounded-full ${
-                          integrationSettings.whatsapp.isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-                        }`}
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                          {integrationSettings.whatsapp.isConnected ? 'Connected to WhatsApp' : 'Not Connected'}
-                        </span>
-                        {integrationSettings.whatsapp.isConnected && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Ready to send invoices
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {whatsappQRCode && !integrationSettings.whatsapp.isConnected && (
-                    <div className="rounded-lg border-2 border-blue-200 bg-white p-6 dark:border-blue-800 dark:bg-slate-800">
-                      <div className="mb-4 text-center">
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-                          Connect WhatsApp Web
-                        </h3>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          Follow these steps to connect your WhatsApp account
-                        </p>
-                      </div>
-                      
-                      <div className="space-y-4 mb-6">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">
-                            1
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                              Open WhatsApp on your phone
-                            </p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                              Make sure your phone has an active internet connection
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">
-                            2
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                              Tap Menu or Settings
-                            </p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                              On Android: Tap More options (⋮) → Linked Devices<br/>
-                              On iPhone: Tap Settings → Linked Devices
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">
-                            3
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                              Tap "Link a Device"
-                            </p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                              Point your phone at this screen to capture the QR code
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-col items-center gap-4">
-                        <div className="bg-white p-4 rounded-lg border-2 border-slate-200 dark:border-slate-700 shadow-sm">
-                          {whatsappQRCode.startsWith('data:image') ? (
-                            <img 
-                              src={whatsappQRCode} 
-                              alt="WhatsApp QR Code" 
-                              className="w-64 h-64"
-                              onError={(e) => {
-                                const img = e.target as HTMLImageElement
-                                console.error('QR code image error. Current src length:', img.src?.length)
-                                console.error('QR code value length:', whatsappQRCode?.length)
-                                console.error('QR code starts with:', whatsappQRCode?.substring(0, 100))
-                                setWhatsappQRCode(null)
-                              }}
-                              onLoad={() => {
-                                console.log('QR code image loaded successfully')
-                              }}
-                            />
-                          ) : (
-                            <div className="flex items-center justify-center">
-                              <QRCodeSVG 
-                                value={whatsappQRCode} 
-                                size={256}
-                                level="M"
-                                includeMargin={true}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-xs text-center text-slate-500 dark:text-slate-400">
-                          Scan this QR code with your phone to connect
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {isConnectingWhatsApp && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Connecting to WhatsApp...</p>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Message Template</label>
-                    <textarea
-                      value={integrationSettings.whatsapp.messageTemplate || ''}
-                      onChange={async (e) => {
-                        const updated = {
-                          ...integrationSettings,
-                          whatsapp: { ...integrationSettings.whatsapp, messageTemplate: e.target.value },
-                        }
-                        setIntegrationSettingsState(updated)
-                        await updateWhatsAppSettings({ messageTemplate: e.target.value })
-                      }}
-                      rows={6}
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                      placeholder="Enter message template. Use {{customerName}}, {{invoiceNumber}}, {{total}}, etc."
-                    />
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Available variables: {'{{customerName}}'}, {'{{invoiceNumber}}'}, {'{{subtotal}}'}, {'{{tax}}'}, {'{{total}}'}, {'{{paidAmount}}'}, {'{{dueAmount}}'}, {'{{items}}'}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Note: Invoice will be sent as PDF attachment along with this message
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setIsConnectingWhatsApp(true)
-                      try {
-                        await whatsappService.initialize(integrationSettings.whatsapp)
-                        const qrCode = await whatsappService.getQRCode()
-                        if (qrCode) {
-                          setWhatsappQRCode(qrCode)
-                        }
-                        const isConnected = await whatsappService.checkConnection()
-                        setIntegrationSettingsState((prev) => ({
-                          ...prev,
-                          whatsapp: { ...prev.whatsapp, isConnected },
-                        }))
-                      } catch (error) {
-                        console.error('Error connecting WhatsApp:', error)
-                      } finally {
-                        setIsConnectingWhatsApp(false)
-                      }
-                    }}
-                    disabled={isConnectingWhatsApp}
-                    className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-400"
-                  >
-                    {isConnectingWhatsApp ? 'Connecting...' : 'Connect WhatsApp'}
-                  </button>
-                </div>
-              )}
-            </section>
           </div>
         )}
 

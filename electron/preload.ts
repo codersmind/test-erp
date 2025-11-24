@@ -64,41 +64,6 @@ contextBridge.exposeInMainWorld('electronPrinter', {
   },
 })
 
-// WhatsApp API
-contextBridge.exposeInMainWorld('electronWhatsApp', {
-  async initialize(options: { sessionPath?: string }) {
-    return ipcRenderer.invoke('whatsapp:initialize', options)
-  },
-  async getQR() {
-    return ipcRenderer.invoke('whatsapp:getQR')
-  },
-  async checkConnection() {
-    return ipcRenderer.invoke('whatsapp:checkConnection')
-  },
-  async sendMessage(options: { to: string; message: string; mediaPath?: string; caption?: string }) {
-    return ipcRenderer.invoke('whatsapp:sendMessage', options)
-  },
-  async disconnect() {
-    return ipcRenderer.invoke('whatsapp:disconnect')
-  },
-  onQR(callback: (qr: string) => void) {
-    ipcRenderer.on('whatsapp:qr', (_event: any, qr: string) => callback(qr))
-    return () => ipcRenderer.removeAllListeners('whatsapp:qr')
-  },
-  onReady(callback: () => void) {
-    ipcRenderer.on('whatsapp:ready', callback)
-    return () => ipcRenderer.removeAllListeners('whatsapp:ready')
-  },
-  onAuthFailure(callback: (msg: string) => void) {
-    ipcRenderer.on('whatsapp:auth_failure', (_event: any, msg: string) => callback(msg))
-    return () => ipcRenderer.removeAllListeners('whatsapp:auth_failure')
-  },
-  onDisconnected(callback: () => void) {
-    ipcRenderer.on('whatsapp:disconnected', callback)
-    return () => ipcRenderer.removeAllListeners('whatsapp:disconnected')
-  },
-})
-
 // PDF Generation API
 contextBridge.exposeInMainWorld('electronPDF', {
   async generate(options: { html: string; filename: string }) {
