@@ -65,9 +65,17 @@ contextBridge.exposeInMainWorld('electronPrinter', {
 })
 
 // PDF Generation API
-contextBridge.exposeInMainWorld('electronPDF', {
+const electronPDFAPI = {
   async generate(options: { html: string; filename: string }) {
     return ipcRenderer.invoke('generate:pdf', options)
   },
-})
+}
+
+// Expose via contextBridge (works with contextIsolation: true or false)
+contextBridge.exposeInMainWorld('electronPDF', electronPDFAPI)
+
+// Also expose directly on window as fallback (for contextIsolation: false)
+if (typeof window !== 'undefined') {
+  (window as any).electronPDF = electronPDFAPI
+}
 

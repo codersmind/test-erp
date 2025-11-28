@@ -490,8 +490,8 @@ try {
 // === Environment Variables ===
 // Only use dev server URL if explicitly set (not in production builds)
 // In production, process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL is undefined
-// const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
-const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
+const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
+// const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
 const MAIN_WINDOW_VITE_NAME = process.env.MAIN_WINDOW_VITE_NAME || 'main_window'
 const MAIN_WINDOW_PRELOAD_VITE_ENTRY = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY
 
@@ -676,8 +676,8 @@ const createWindow = async () => {
     show: false,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_VITE_ENTRY ?? join(__dirname, '../preload/index.cjs'),
-      nodeIntegration: false,
-      contextIsolation: true,
+      nodeIntegration: true, // Enable Node.js in renderer for whatsapp-web.js
+      contextIsolation: false, // Disable context isolation to allow direct Node.js access
       webSecurity: true,
       enableWebSecurity: true,
     },

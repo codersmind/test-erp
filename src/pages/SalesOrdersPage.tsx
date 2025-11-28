@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Formik, FieldArray } from 'formik'
-import { FileText, Printer, Trash2, X, GripVertical } from 'lucide-react'
+import { FileText, Printer, Trash2, X, GripVertical, MessageSquare } from 'lucide-react'
 
 import { useCreateSalesOrder, useUpdateSalesOrderStatus, useUpdateSalesOrderNotes, useDeleteSalesOrder } from '../hooks/useSalesOrders'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -26,6 +26,8 @@ import { getOrderSettings } from '../utils/orderSettings'
 import type { Customer } from '../db/schema'
 import { exportSalesOrdersToExcel, exportSalesOrdersToCSV } from '../utils/exportUtils'
 import type { DateFilter } from '../utils/exportUtils'
+import { whatsappService } from '../services/whatsappService'
+import { getIntegrationSettings } from '../utils/integrationSettings'
 
 const PAGE_SIZE = 20
 
@@ -36,6 +38,8 @@ const SalesOrderRow = ({ order, onDelete }: { order: SalesOrder; onDelete: (id: 
   const [showPrint, setShowPrint] = useState(false)
   const [showNote, setShowNote] = useState(false)
   const [noteText, setNoteText] = useState(order.notes || '')
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false)
+  const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(false)
   const updateStatus = useUpdateSalesOrderStatus()
   const updateNotes = useUpdateSalesOrderNotes()
 
@@ -45,6 +49,26 @@ const SalesOrderRow = ({ order, onDelete }: { order: SalesOrder; onDelete: (id: 
       setItems(orderItems)
       const cust = await getCustomer(order.customerId)
       setCustomer(cust || null)
+      
+      // Check WhatsApp connection status
+      const checkConnection = async () => {
+        try {
+          const isConnected = await whatsappService.checkConnection()
+          setIsWhatsAppConnected(isConnected)
+        } catch (error) {
+          setIsWhatsAppConnected(false)
+        }
+      }
+      checkConnection()
+      
+      // Set up listeners for connection status changes
+      whatsappService.onReady(() => {
+        setIsWhatsAppConnected(true)
+      })
+      
+      whatsappService.onDisconnected(() => {
+        setIsWhatsAppConnected(false)
+      })
     }
     loadData()
   }, [order.id, order.customerId])
@@ -56,6 +80,33 @@ const SalesOrderRow = ({ order, onDelete }: { order: SalesOrder; onDelete: (id: 
   const handleSaveNote = async () => {
     await updateNotes.mutateAsync({ id: order.id, notes: noteText })
     setShowNote(false)
+  }
+
+  const handleSendWhatsApp = async () => {
+    if (!customer) {
+      alert('Customer information not available')
+      return
+    }
+
+    if (!customer.phone) {
+      alert('Customer phone number is required')
+      return
+    }
+
+    setIsSendingWhatsApp(true)
+    try {
+      const settings = await getIntegrationSettings()
+      if (!settings.whatsapp.enabled) {
+        alert('WhatsApp integration is not enabled. Please enable it in Settings > Integration.')
+        return
+      }
+
+      await whatsappService.sendInvoice(order, items, customer, settings.whatsapp)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to send invoice via WhatsApp')
+    } finally {
+      setIsSendingWhatsApp(false)
+    }
   }
 
 
@@ -131,6 +182,18 @@ const SalesOrderRow = ({ order, onDelete }: { order: SalesOrder; onDelete: (id: 
                 </>
               )}
             </button>
+            {isWhatsAppConnected && whatsappService.isValidPhoneNumber(customer?.phone) && (
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                disabled={isSendingWhatsApp}
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-green-600 transition-colors hover:bg-green-50 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 dark:text-green-400 dark:hover:bg-green-900/20 dark:hover:text-green-300"
+                title="Send Invoice via WhatsApp"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{isSendingWhatsApp ? 'Sending...' : 'Send WhatsApp'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onDelete(order.id)}

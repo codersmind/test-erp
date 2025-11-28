@@ -5,9 +5,9 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     appBundleId: 'com.ponytory.erp', 
-    asar: {
-      unpackDir: 'node_modules/wwebjs-electron',
-    },
+    asar: true,
+    // Don't pack whatsapp-web.js into asar - it needs to be accessible at runtime
+    // extraResource: ['node_modules'],
     executableName: 'ponytory-erp',
     // App icon configuration
     // Place your icon files in assets/icons/ directory:
@@ -83,6 +83,12 @@ module.exports = {
         {
           name: 'main_window',
           config: 'vite.renderer.config.ts',
+          // Disable dependency optimization for whatsapp-web.js
+          viteOptions: {
+            optimizeDeps: {
+              exclude: ['whatsapp-web.js', 'qrcode-terminal'],
+            },
+          },
         },
       ],
     }),

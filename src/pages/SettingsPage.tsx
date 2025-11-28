@@ -69,6 +69,13 @@ import {
   setPrinterSettings,
   type PrinterSettings,
 } from '../utils/printerSettings'
+import {
+  getIntegrationSettings,
+  updateWhatsAppSettings,
+  type IntegrationSettings,
+} from '../utils/integrationSettings'
+import { whatsappService } from '../services/whatsappService'
+import { QRCodeSVG } from 'qrcode.react'
 import { InvoiceTemplateEditor } from '../components/InvoiceTemplateEditor'
 
 type SettingsTab = 'tax' | 'units' | 'orderId' | 'print' | 'purchaseOrder' | 'integration' | 'danger'
@@ -181,6 +188,15 @@ export const SettingsPage = () => {
   const [isSavingPrinter, setIsSavingPrinter] = useState(false)
   const [logo, setLogo] = useState<LogoData | null>(null)
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+  const [integrationSettings, setIntegrationSettingsState] = useState<IntegrationSettings>({
+    whatsapp: {
+      enabled: false,
+      isConnected: false,
+      messageTemplate: 'Hello {{customerName}},\n\nYour invoice #{{invoiceNumber}} for ₹{{total}} is ready.\n\nThank you for your business!',
+    },
+  })
+  const [whatsappQRCode, setWhatsappQRCode] = useState<string | null>(null)
+  const [isConnectingWhatsApp, setIsConnectingWhatsApp] = useState(false)
 
   useEffect(() => {
     getTaxSettings().then((settings) => {
@@ -195,8 +211,193 @@ export const SettingsPage = () => {
     loadPrinterSettings()
     loadAvailablePrinters()
     loadLogo()
+    loadIntegrationSettings()
   }, [])
 
+  // Subscribe to WhatsApp connection status changes and auto-initialize if enabled
+  useEffect(() => {
+    if (!integrationSettings.whatsapp.enabled) {
+      return
+    }
+
+    let isMounted = true
+
+    // Subscribe to connection events FIRST (before initialization)
+    // This ensures we catch QR codes that are generated during initialization
+    const handleReady = async () => {
+      if (isMounted) {
+        setIntegrationSettingsState((prev) => ({
+          ...prev,
+          whatsapp: { ...prev.whatsapp, isConnected: true },
+        }))
+        // Persist connection status to storage
+        await updateWhatsAppSettings({ isConnected: true })
+        setWhatsappQRCode(null) // Clear QR code when connected
+      }
+    }
+
+    const handleDisconnected = async () => {
+      if (isMounted) {
+        setIntegrationSettingsState((prev) => ({
+          ...prev,
+          whatsapp: { ...prev.whatsapp, isConnected: false },
+        }))
+        // Persist connection status to storage
+        await updateWhatsAppSettings({ isConnected: false })
+      }
+    }
+
+    const handleQR = (qr: string) => {
+      if (isMounted) {
+        console.log('QR code received in callback')
+        setWhatsappQRCode(qr)
+      }
+    }
+
+    whatsappService.onReady(handleReady)
+    whatsappService.onDisconnected(handleDisconnected)
+    whatsappService.onQR(handleQR)
+
+    // Auto-initialize WhatsApp if enabled (e.g., on page reload)
+    const initializeWhatsApp = async () => {
+      try {
+        // First check if already connected
+        const isConnected = await whatsappService.checkConnection()
+        if (isConnected && isMounted) {
+          setIntegrationSettingsState((prev) => ({
+            ...prev,
+            whatsapp: { ...prev.whatsapp, isConnected: true },
+          }))
+          return // Already connected, no need to initialize
+        }
+
+        // If not connected, try to initialize (will reconnect if session exists)
+        await whatsappService.initialize(integrationSettings.whatsapp)
+        
+        // Wait longer for session restoration (if session exists, 'authenticated' or 'ready' will fire)
+        // Give it time to restore session before checking for QR code
+        console.log('Waiting for session restoration or QR code...')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        
+        // Check connection status first (session might have been restored)
+        let connected = await whatsappService.checkConnection()
+        
+        if (connected && isMounted) {
+          console.log('Session restored - already connected')
+          setIntegrationSettingsState((prev) => ({
+            ...prev,
+            whatsapp: { ...prev.whatsapp, isConnected: true },
+          }))
+          await updateWhatsAppSettings({ isConnected: true })
+          // Clear any QR code if we're connected
+          setWhatsappQRCode(null)
+        } else {
+          // Not connected yet, check for QR code (only if session doesn't exist)
+          // Poll for connection and QR code
+          let qrCode: string | null = null
+          
+          for (let i = 0; i < 8; i++) {
+            // Check connection status
+            connected = await whatsappService.checkConnection()
+            if (connected && isMounted) {
+              console.log(`Connected on attempt ${i + 1} - session restored`)
+              setIntegrationSettingsState((prev) => ({
+                ...prev,
+                whatsapp: { ...prev.whatsapp, isConnected: true },
+              }))
+              await updateWhatsAppSettings({ isConnected: true })
+              setWhatsappQRCode(null) // Clear QR code if connected
+              break
+            }
+            
+            // Only check for QR code if not connected (QR means no session)
+            if (!connected) {
+              qrCode = await whatsappService.getQRCode()
+              if (qrCode && isMounted) {
+                console.log(`QR code found on attempt ${i + 1} - new authentication needed`)
+                setWhatsappQRCode(qrCode)
+                // Don't break - keep checking in case connection happens
+              }
+            }
+            
+            // Wait before next check
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+          
+          // Final update
+          if (isMounted) {
+            if (!connected) {
+              connected = await whatsappService.checkConnection()
+            }
+            if (!qrCode && !connected) {
+              // Final QR code check (only if still not connected)
+              qrCode = await whatsappService.getQRCode()
+              if (qrCode) {
+                setWhatsappQRCode(qrCode)
+              }
+            }
+            
+            setIntegrationSettingsState((prev) => ({
+              ...prev,
+              whatsapp: { ...prev.whatsapp, isConnected: connected },
+            }))
+            await updateWhatsAppSettings({ isConnected: connected })
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing WhatsApp on page load:', error)
+        if (isMounted) {
+          setIntegrationSettingsState((prev) => ({
+            ...prev,
+            whatsapp: { ...prev.whatsapp, isConnected: false },
+          }))
+        }
+      }
+    }
+
+    initializeWhatsApp()
+
+    // Cleanup: remove event listeners when component unmounts or WhatsApp is disabled
+    return () => {
+      isMounted = false
+      whatsappService.onReady(() => {}) // Clear callback
+      whatsappService.onDisconnected(() => {}) // Clear callback
+      whatsappService.onQR(() => {}) // Clear callback
+    }
+  }, [integrationSettings.whatsapp.enabled])
+
+  const loadIntegrationSettings = async () => {
+    const settings = await getIntegrationSettings()
+    setIntegrationSettingsState(settings)
+    
+    // If WhatsApp is enabled, check the actual connection status
+    // But don't auto-initialize here - let the useEffect handle that
+    if (settings.whatsapp.enabled) {
+      try {
+        // Give a small delay for service to be ready
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const isConnected = await whatsappService.checkConnection()
+        if (isConnected !== settings.whatsapp.isConnected) {
+          setIntegrationSettingsState((prev) => ({
+            ...prev,
+            whatsapp: { ...prev.whatsapp, isConnected },
+          }))
+          // Update storage if status changed
+          await updateWhatsAppSettings({ isConnected })
+        }
+      } catch (error) {
+        console.error('Error checking WhatsApp connection status:', error)
+        // If check fails, assume not connected (service might not be initialized yet)
+        // The useEffect will handle initialization
+        if (settings.whatsapp.isConnected) {
+          setIntegrationSettingsState((prev) => ({
+            ...prev,
+            whatsapp: { ...prev.whatsapp, isConnected: false },
+          }))
+        }
+      }
+    }
+  }
 
   const loadLogo = async () => {
     const logoData = await getLogo()
@@ -2212,6 +2413,192 @@ export const SettingsPage = () => {
                 <p>Pending sync items: {pendingCount}</p>
                 <p>Last synced at: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'Never'}</p>
               </div>
+            </section>
+
+            {/* WhatsApp Integration */}
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">WhatsApp Integration</h2>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={integrationSettings.whatsapp.enabled}
+                    onChange={async (e) => {
+                      const updated = {
+                        ...integrationSettings,
+                        whatsapp: { ...integrationSettings.whatsapp, enabled: e.target.checked },
+                      }
+                      setIntegrationSettingsState(updated)
+                      await updateWhatsAppSettings({ enabled: e.target.checked })
+                      if (e.target.checked) {
+                        setIsConnectingWhatsApp(true)
+                        try {
+                          await whatsappService.initialize(updated.whatsapp)
+                          const qrCode = await whatsappService.getQRCode()
+                          if (qrCode) {
+                            setWhatsappQRCode(qrCode)
+                          }
+                          const isConnected = await whatsappService.checkConnection()
+                          setIntegrationSettingsState((prev) => ({
+                            ...prev,
+                            whatsapp: { ...prev.whatsapp, isConnected },
+                          }))
+                        } catch (error) {
+                          console.error('Error initializing WhatsApp:', error)
+                          alert(error instanceof Error ? error.message : 'Failed to initialize WhatsApp')
+                        } finally {
+                          setIsConnectingWhatsApp(false)
+                        }
+                      } else {
+                        await whatsappService.disconnect()
+                        setWhatsappQRCode(null)
+                        // Update state and storage when disabled
+                        setIntegrationSettingsState((prev) => ({
+                          ...prev,
+                          whatsapp: { ...prev.whatsapp, isConnected: false },
+                        }))
+                        await updateWhatsAppSettings({ isConnected: false })
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900"
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable WhatsApp</span>
+                </label>
+              </div>
+
+              {integrationSettings.whatsapp.enabled && (
+                <div className="mt-4 space-y-4">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`inline-flex h-3 w-3 rounded-full ${
+                          integrationSettings.whatsapp.isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                        }`}
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {integrationSettings.whatsapp.isConnected ? 'Connected to WhatsApp' : 'Not Connected'}
+                        </span>
+                        {integrationSettings.whatsapp.isConnected && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Ready to send invoices
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {integrationSettings.whatsapp.isConnected && (
+                    <div className="rounded-lg border-2 border-green-200 bg-green-50 p-6 dark:border-green-800 dark:bg-green-900/20">
+                      <div className="flex items-center gap-3">
+                        <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <h3 className="text-lg font-semibold text-green-900 dark:text-green-100">
+                            WhatsApp is Connected
+                          </h3>
+                          <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                            You can now send invoices and purchase orders via WhatsApp.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {whatsappQRCode && !integrationSettings.whatsapp.isConnected && (
+                    <div className="rounded-lg border-2 border-blue-200 bg-white p-6 dark:border-blue-800 dark:bg-slate-800">
+                      <div className="mb-4 text-center">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                          Connect WhatsApp Web
+                        </h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          Scan this QR code with your WhatsApp mobile app
+                        </p>
+                      </div>
+                      
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="bg-white p-4 rounded-lg border-2 border-slate-200 dark:border-slate-700 shadow-sm">
+                          <QRCodeSVG 
+                            value={whatsappQRCode} 
+                            size={256}
+                            level="M"
+                            includeMargin={true}
+                          />
+                        </div>
+                        <p className="text-xs text-center text-slate-500 dark:text-slate-400">
+                          Open WhatsApp → Menu → Linked Devices → Link a Device
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {isConnectingWhatsApp && !integrationSettings.whatsapp.isConnected && (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Connecting to WhatsApp...</p>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Message Template</label>
+                    <textarea
+                      value={integrationSettings.whatsapp.messageTemplate || ''}
+                      onChange={async (e) => {
+                        const updated = {
+                          ...integrationSettings,
+                          whatsapp: { ...integrationSettings.whatsapp, messageTemplate: e.target.value },
+                        }
+                        setIntegrationSettingsState(updated)
+                        await updateWhatsAppSettings({ messageTemplate: e.target.value })
+                      }}
+                      rows={6}
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      placeholder="Enter message template. Use {{customerName}}, {{invoiceNumber}}, {{total}}, etc."
+                    />
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Available variables: {'{{customerName}}'}, {'{{invoiceNumber}}'}, {'{{subtotal}}'}, {'{{tax}}'}, {'{{total}}'}, {'{{paidAmount}}'}, {'{{dueAmount}}'}, {'{{items}}'}
+                    </p>
+                  </div>
+
+                  {!integrationSettings.whatsapp.isConnected && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsConnectingWhatsApp(true)
+                        try {
+                          await whatsappService.initialize(integrationSettings.whatsapp)
+                          // Wait a bit for connection to establish
+                          await new Promise(resolve => setTimeout(resolve, 1000))
+                          const qrCode = await whatsappService.getQRCode()
+                          if (qrCode) {
+                            setWhatsappQRCode(qrCode)
+                          }
+                          // Check connection with retry
+                          let isConnected = false
+                          for (let i = 0; i < 3; i++) {
+                            isConnected = await whatsappService.checkConnection()
+                            if (isConnected) break
+                            await new Promise(resolve => setTimeout(resolve, 1000))
+                          }
+                          setIntegrationSettingsState((prev) => ({
+                            ...prev,
+                            whatsapp: { ...prev.whatsapp, isConnected },
+                          }))
+                          // Persist connection status to storage
+                          await updateWhatsAppSettings({ isConnected })
+                        } catch (error) {
+                          console.error('Error connecting WhatsApp:', error)
+                          alert(error instanceof Error ? error.message : 'Failed to connect WhatsApp')
+                        } finally {
+                          setIsConnectingWhatsApp(false)
+                        }
+                      }}
+                      disabled={isConnectingWhatsApp}
+                      className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-400"
+                    >
+                      {isConnectingWhatsApp ? 'Connecting...' : 'Connect WhatsApp'}
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
 
           </div>
