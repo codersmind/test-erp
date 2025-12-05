@@ -490,8 +490,8 @@ try {
 // === Environment Variables ===
 // Only use dev server URL if explicitly set (not in production builds)
 // In production, process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL is undefined
-// const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
-const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
+const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
+// const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
 const MAIN_WINDOW_VITE_NAME = process.env.MAIN_WINDOW_VITE_NAME || 'main_window'
 const MAIN_WINDOW_PRELOAD_VITE_ENTRY = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY
 
@@ -945,6 +945,21 @@ ipcMain.handle('printer:get-printers', async () => {
       return { success: false, error: 'Main window not available' }
     }
     const printers = await mainWindow.webContents.getPrintersAsync()
+    
+    // Map printer status codes to readable status
+    const getStatusText = (status: number): string => {
+      // Electron printer status codes:
+      // 0 = idle, 1 = printing, 2 = stopped, 3 = error, 4 = offline
+      const statusMap: { [key: number]: string } = {
+        0: 'ready',
+        1: 'printing',
+        2: 'stopped',
+        3: 'error',
+        4: 'offline',
+      }
+      return statusMap[status] || 'unknown'
+    }
+    
     return {
       success: true,
       printers: printers.map((printer: any) => ({
@@ -952,15 +967,19 @@ ipcMain.handle('printer:get-printers', async () => {
         displayName: printer.displayName || printer.name,
         description: printer.description || printer.name,
         status: printer.status,
+        statusText: getStatusText(printer.status),
         isDefault: printer.isDefault || false,
+        isAvailable: printer.status === 0 || printer.status === 1, // ready or printing
       })),
     }
   } catch (error: any) {
+    console.error('Error getting printers:', error)
     return { success: false, error: error.message }
   }
 })
 
 ipcMain.handle('printer:print', async (_: any, options: { html: string; printerName?: string; silent?: boolean }) => {
+  let printWindow: any = null
   try {
     if (!mainWindow) {
       return { success: false, error: 'Main window not available' }
@@ -968,37 +987,250 @@ ipcMain.handle('printer:print', async (_: any, options: { html: string; printerN
 
     const { html, printerName, silent = false } = options
 
-    // Create a hidden window for printing
-    const printWindow = new BrowserWindow({
-      show: false,
+    // Validate HTML content
+    if (!html || html.trim().length === 0) {
+      return { success: false, error: 'Print content is empty. Cannot print.' }
+    }
+
+    // Verify printer exists and check if it's a virtual printer
+    let isVirtualPrinter = false
+    let printerStatus: number | null = null
+    if (printerName) {
+      try {
+        const printers = await mainWindow.webContents.getPrintersAsync()
+        
+        // Try exact match first, then case-insensitive, then partial match
+        let printer = printers.find((p: any) => p.name === printerName)
+        if (!printer) {
+          printer = printers.find((p: any) => p.name.toLowerCase() === printerName.toLowerCase())
+        }
+        if (!printer) {
+          // Try partial match (useful for printers with long names or network printers)
+          const printerNameLower = printerName.toLowerCase()
+          printer = printers.find((p: any) => 
+            p.name.toLowerCase().includes(printerNameLower) || 
+            printerNameLower.includes(p.name.toLowerCase())
+          )
+        }
+        
+        if (!printer) {
+          // List available printers for debugging
+          const availablePrinters = printers.map((p: any) => p.name).join(', ')
+          console.error('Printer not found. Available printers:', availablePrinters)
+          return { 
+            success: false, 
+            error: `Printer "${printerName}" not found. Available printers: ${availablePrinters || 'none'}. Please check if the printer is connected and drivers are installed.` 
+          }
+        }
+        
+        printerStatus = printer.status
+        
+        // Check printer status - warn if offline or in error state, but still try to print
+        if (printer.status === 4) {
+          console.warn(`Printer "${printerName}" is offline, but attempting to print anyway`)
+        } else if (printer.status === 3) {
+          console.warn(`Printer "${printerName}" is in error state, but attempting to print anyway`)
+        }
+        
+        // Detect virtual printers (PDF printers, OneNote, Fax, etc.)
+        const virtualPrinterKeywords = ['pdf', 'onenote', 'fax', 'xps', 'microsoft print to pdf', 'save as pdf', 'print to file']
+        const printerNameLower = printer.name.toLowerCase()
+        isVirtualPrinter = virtualPrinterKeywords.some(keyword => printerNameLower.includes(keyword))
+        
+        console.log(`Printer found: ${printer.name}, Status: ${printer.status}, Virtual: ${isVirtualPrinter}`)
+      } catch (printerCheckError: any) {
+        console.error('Could not verify printer:', printerCheckError.message)
+        // Don't fail completely - try to print anyway as the printer might still work
+        console.warn('Continuing with print attempt despite verification error')
+      }
+    }
+
+    // Create a window for printing
+    // For virtual printers, we need to show the window so the print dialog appears
+    // For physical printers, we can keep it hidden for silent printing
+    printWindow = new BrowserWindow({
+      show: isVirtualPrinter, // Show window for virtual printers to allow dialog interaction
+      width: isVirtualPrinter ? 1024 : 800,
+      height: isVirtualPrinter ? 768 : 600,
+      parent: isVirtualPrinter ? mainWindow : undefined, // Make virtual printer window a child of main window
+      modal: false,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
       },
     })
+    
+    // Center the window if it's visible
+    if (isVirtualPrinter) {
+      printWindow.center()
+    }
 
     // Load HTML content
     await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
 
-    // Wait for content to load
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    // Wait for content to load and ensure it's ready
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    // Print options
-    const printOptions: any = {
-      silent,
-      printBackground: true,
-      deviceName: printerName || undefined,
+    // Verify content loaded
+    const isReady = await printWindow.webContents.executeJavaScript('document.readyState === "complete"')
+    if (!isReady) {
+      return { success: false, error: 'Failed to load print content. Please try again.' }
     }
 
-    // Print
-    const success = await printWindow.webContents.print(printOptions)
+    // For virtual printers, ensure window is visible, focused, and on top for dialog interaction
+    if (isVirtualPrinter) {
+      printWindow.show()
+      printWindow.focus()
+      printWindow.moveTop() // Bring window to front
+      printWindow.setAlwaysOnTop(true, 'screen-saver') // Keep on top temporarily
+      // Small delay to ensure window is fully ready and visible
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      
+      // After dialog appears, we can remove always-on-top
+      // But we'll keep it until printing completes
+    }
+
+    // Print options
+    // Virtual printers (like Microsoft Print to PDF) require the dialog to show
+    // so users can select save location, so force non-silent for virtual printers
+    const effectiveSilent = isVirtualPrinter ? false : silent
+    
+    // For virtual printers with dialog, don't specify deviceName in print options
+    // as it may prevent the dialog from showing properly. The user will select
+    // the printer from the dialog. For physical printers or silent printing,
+    // we can specify the deviceName.
+    const printOptions: any = {
+      silent: effectiveSilent,
+      printBackground: true,
+    }
+    
+    // For virtual printers, we need to be careful:
+    // - If we specify deviceName, the dialog might not appear or might be pre-filled
+    // - If we don't specify deviceName, the user has to select the printer manually
+    // For "Microsoft Print to PDF", we'll try specifying deviceName with silent=false
+    // which should show the dialog with the printer pre-selected
+    if (printerName) {
+      if (isVirtualPrinter && !effectiveSilent) {
+        // For virtual printers with dialog, try specifying deviceName
+        // This should pre-select the printer but still show the dialog for save location
+        printOptions.deviceName = printerName
+        console.log(`Virtual printer with dialog - deviceName specified to pre-select: ${printerName}`)
+      } else {
+        // Physical printer or silent printing - always specify deviceName
+        printOptions.deviceName = printerName
+        console.log(`Physical printer or silent - deviceName: ${printerName}`)
+      }
+    }
+
+    // Print with timeout
+    // For virtual printers, use a longer timeout as they may need user interaction
+    const timeoutDuration = isVirtualPrinter ? 60000 : 30000
+    
+    console.log('Printing with options:', {
+      silent: printOptions.silent,
+      deviceName: printOptions.deviceName,
+      isVirtualPrinter,
+      printerName,
+    })
+    
+    const printPromise = printWindow.webContents.print(printOptions)
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Print operation timed out')), timeoutDuration)
+    )
+    
+    let success: boolean
+    try {
+      // For virtual printers, log when print is called to help debug
+      if (isVirtualPrinter) {
+        console.log('Calling print() for virtual printer - dialog should appear now')
+      }
+      
+      success = await Promise.race([printPromise, timeoutPromise])
+      console.log('Print result:', success)
+      
+      // For virtual printers, if it returned false, it likely means the dialog was cancelled
+      if (isVirtualPrinter && !success) {
+        console.warn('Virtual printer print returned false - dialog may have been cancelled')
+      }
+    } catch (timeoutError: any) {
+      console.error('Print timeout error:', timeoutError)
+      if (timeoutError && timeoutError.message && timeoutError.message.includes('timeout')) {
+        const timeoutMsg = isVirtualPrinter 
+          ? 'Print operation timed out. The save dialog may not have appeared. Please try again.'
+          : 'Print operation timed out. Please try again.'
+        return { success: false, error: timeoutMsg }
+      }
+      throw timeoutError
+    }
 
     // Close the print window
-    printWindow.close()
+    // For virtual printers, wait a bit before closing to ensure dialog interaction completes
+    if (printWindow && !printWindow.isDestroyed()) {
+      if (isVirtualPrinter) {
+        // Remove always-on-top before closing
+        printWindow.setAlwaysOnTop(false)
+        // Give a moment for any save dialog to complete
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+      printWindow.close()
+    }
 
-    return { success: !!success }
+    if (!success) {
+      // Provide specific error messages based on printer type
+      if (isVirtualPrinter) {
+        return { 
+          success: false, 
+          error: `Failed to print to "${printerName}". The print dialog may have been cancelled, or the save location dialog did not appear. Please ensure the print dialog is visible and select "${printerName}" from the printer list, then choose a save location.`
+        }
+      }
+      
+      // For physical printers, provide detailed troubleshooting information
+      let errorMsg = 'Print operation failed.'
+      if (printerName) {
+        const getStatusText = (status: number | null): string => {
+          if (status === null) return ''
+          if (status === 0) return 'ready'
+          if (status === 4) return 'offline'
+          if (status === 3) return 'error'
+          return 'unknown'
+        }
+        
+        const statusText = getStatusText(printerStatus)
+        const statusInfo = statusText ? ` (Status: ${statusText})` : ''
+        errorMsg = `Failed to print to "${printerName}"${statusInfo}. `
+        
+        // Add specific troubleshooting based on status
+        if (printerStatus === 4) {
+          errorMsg += 'The printer appears to be offline. Please check the connection (USB/Network) and ensure the printer is powered on.'
+        } else if (printerStatus === 3) {
+          errorMsg += 'The printer is in an error state. Please check for paper jams, low ink/toner, or other printer errors.'
+        } else {
+          errorMsg += 'Please check: 1) Printer is online and connected, 2) Has paper/ink, 3) Drivers are installed, 4) Printer is not paused or in error state.'
+        }
+      } else {
+        errorMsg = 'Print operation failed. Please check your printer settings and try again.'
+      }
+      
+      return { success: false, error: errorMsg }
+    }
+
+    return { success: true }
   } catch (error: any) {
-    return { success: false, error: error.message }
+    // Close the print window if it exists
+    if (printWindow && !printWindow.isDestroyed()) {
+      printWindow.close()
+    }
+    
+    // Provide more specific error messages
+    const errorMessage = error.message || 'Unknown error'
+    if (errorMessage.includes('timeout')) {
+      return { success: false, error: 'Print operation timed out. Please try again.' }
+    }
+    if (errorMessage.includes('printer') || errorMessage.includes('device')) {
+      return { success: false, error: `Printer error: ${errorMessage}` }
+    }
+    
+    return { success: false, error: `Print failed: ${errorMessage}` }
   }
 })
 
@@ -1010,22 +1242,29 @@ ipcMain.handle('printer:show-dialog', async () => {
 
     const printers = await mainWindow.webContents.getPrintersAsync()
     
-    if (printers.length === 0) {
-      return { success: false, error: 'No printers available' }
+    // Filter out virtual printers (PDF, OneNote, Fax, etc.) - only show real printers
+    const virtualPrinterKeywords = ['pdf', 'onenote', 'fax', 'xps', 'microsoft print to pdf', 'save as pdf', 'print to file']
+    const realPrinters = printers.filter((printer: any) => {
+      const printerNameLower = printer.name.toLowerCase()
+      return !virtualPrinterKeywords.some(keyword => printerNameLower.includes(keyword))
+    })
+    
+    if (realPrinters.length === 0) {
+      return { success: false, error: 'No physical printers available. Please connect a printer.' }
     }
 
-    // Show dialog to select printer
+    // Show dialog to select printer (only real printers)
     const result = await dialog.showMessageBox(mainWindow, {
       type: 'question',
       title: 'Select Printer',
       message: 'Choose a printer:',
-      buttons: printers.map((p: any) => p.displayName || p.name),
-      defaultId: printers.findIndex((p: any) => p.isDefault) || 0,
+      buttons: realPrinters.map((p: any) => p.displayName || p.name),
+      defaultId: realPrinters.findIndex((p: any) => p.isDefault) || 0,
       cancelId: -1,
     })
 
-    if (result.response >= 0 && result.response < printers.length) {
-      const selectedPrinter = printers[result.response]
+    if (result.response >= 0 && result.response < realPrinters.length) {
+      const selectedPrinter = realPrinters[result.response]
       return {
         success: true,
         printer: {

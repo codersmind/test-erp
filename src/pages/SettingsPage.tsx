@@ -175,7 +175,9 @@ export const SettingsPage = () => {
     displayName: string
     description: string
     status: number
+    statusText?: string
     isDefault: boolean
+    isAvailable?: boolean
   }>>([])
   const [isLoadingPrinters, setIsLoadingPrinters] = useState(false)
   const [isSavingPrinter, setIsSavingPrinter] = useState(false)
@@ -246,7 +248,13 @@ export const SettingsPage = () => {
     try {
       const result = await window.electronPrinter.getPrinters()
       if (result.success && result.printers) {
-        setAvailablePrinters(result.printers)
+        // Filter out virtual printers (PDF, OneNote, Fax, etc.) - only show real printers
+        const virtualPrinterKeywords = ['pdf', 'onenote', 'fax', 'xps', 'microsoft print to pdf', 'save as pdf', 'print to file']
+        const realPrinters = result.printers.filter((printer) => {
+          const printerNameLower = printer.name.toLowerCase()
+          return !virtualPrinterKeywords.some(keyword => printerNameLower.includes(keyword))
+        })
+        setAvailablePrinters(realPrinters)
       }
     } catch (error) {
       console.error('Failed to load printers:', error)
@@ -1484,62 +1492,139 @@ export const SettingsPage = () => {
 
             <div className="mt-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
-                  Default Printer
-                </label>
-                {isLoadingPrinters ? (
-                  <p className="text-sm text-slate-500">Loading printers...</p>
-                ) : availablePrinters.length === 0 ? (
-                  <p className="text-sm text-slate-500">No printers detected. Make sure your printer is connected and try refreshing.</p>
-                ) : (
-                  <select
-                    value={printerSettings.defaultPrinterName || ''}
-                    onChange={async (e) => {
-                      const selectedPrinter = availablePrinters.find((p) => p.name === e.target.value)
-                      const newSettings: PrinterSettings = {
-                        defaultPrinterName: selectedPrinter?.name || null,
-                        defaultPrinterDescription: selectedPrinter?.displayName || null,
-                      }
-                      setPrinterSettingsState(newSettings)
-                      setIsSavingPrinter(true)
-                      try {
-                        await setPrinterSettings(newSettings)
-                      } finally {
-                        setIsSavingPrinter(false)
-                      }
-                    }}
-                    className="w-full max-w-md rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  >
-                    <option value="">No default printer (show dialog)</option>
-                    {availablePrinters.map((printer) => (
-                      <option key={printer.name} value={printer.name}>
-                        {printer.displayName} {printer.isDefault ? '(System Default)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mb-3 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">
+                    Available Printers
+                  </label>
                   <button
                     type="button"
                     onClick={loadAvailablePrinters}
                     disabled={isLoadingPrinters}
                     className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                   >
-                    {isLoadingPrinters ? 'Refreshing...' : 'Refresh Printers'}
+                    {isLoadingPrinters ? 'Refreshing...' : '🔄 Refresh'}
                   </button>
-                  {isSavingPrinter && <span className="text-xs text-slate-500">Saving...</span>}
                 </div>
-                {printerSettings.defaultPrinterName && (
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                    Selected: <strong>{printerSettings.defaultPrinterDescription || printerSettings.defaultPrinterName}</strong>
-                    <br />
-                    Invoices will be printed automatically to this printer without showing a dialog.
-                  </p>
+                
+                {isLoadingPrinters ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                    <p className="text-sm text-slate-500">Loading printers...</p>
+                  </div>
+                ) : availablePrinters.length === 0 ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                    <p className="text-sm text-slate-500">No printers detected. Make sure your printer is connected and try refreshing.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {availablePrinters.map((printer) => {
+                      const isSelected = printerSettings.defaultPrinterName === printer.name
+                      const isSystemDefault = printer.isDefault
+                      
+                      return (
+                        <div
+                          key={printer.name}
+                          className={`flex items-center justify-between rounded-lg border p-3 transition ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
+                              : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-900 dark:text-slate-100">
+                                {printer.displayName}
+                              </span>
+                              {isSystemDefault && (
+                                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                  System Default
+                                </span>
+                              )}
+                              {isSelected && (
+                                <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                  ✓ Default
+                                </span>
+                              )}
+                            </div>
+                            {printer.description && printer.description !== printer.displayName && (
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {printer.description}
+                              </p>
+                            )}
+                            <div className="mt-1 flex items-center gap-2">
+                              <span
+                                className={`text-xs ${
+                                  printer.status === 0
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : printer.status === 4
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : printer.status === 3
+                                    ? 'text-orange-600 dark:text-orange-400'
+                                    : 'text-slate-500 dark:text-slate-400'
+                                }`}
+                              >
+                                {printer.statusText === 'ready' && '🟢 Ready'}
+                                {printer.statusText === 'offline' && '🔴 Offline'}
+                                {printer.statusText === 'error' && '🟠 Error'}
+                                {printer.statusText === 'printing' && '🟡 Printing'}
+                                {printer.statusText === 'stopped' && '⏸️ Stopped'}
+                                {!printer.statusText && '⚪ Unknown'}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const newSettings: PrinterSettings = {
+                                defaultPrinterName: isSelected ? null : printer.name,
+                                defaultPrinterDescription: isSelected ? null : printer.displayName,
+                              }
+                              setPrinterSettingsState(newSettings)
+                              setIsSavingPrinter(true)
+                              try {
+                                await setPrinterSettings(newSettings)
+                              } finally {
+                                setIsSavingPrinter(false)
+                              }
+                            }}
+                            disabled={isSavingPrinter}
+                            className={`ml-3 rounded-md px-4 py-2 text-sm font-medium transition ${
+                              isSelected
+                                ? 'border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600'
+                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            {isSelected ? 'Remove Default' : 'Set as Default'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
-                {!printerSettings.defaultPrinterName && (
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                    When printing, a printer selection dialog will appear for you to choose a printer.
-                  </p>
+                
+                {isSavingPrinter && (
+                  <p className="mt-2 text-xs text-slate-500">Saving...</p>
+                )}
+                
+                {printerSettings.defaultPrinterName && (
+                  <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                    <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                      ✓ Default Printer Set
+                    </p>
+                    <p className="mt-1 text-xs text-green-700 dark:text-green-400">
+                      <strong>{printerSettings.defaultPrinterDescription || printerSettings.defaultPrinterName}</strong> will be used automatically when printing. No dialog will appear.
+                    </p>
+                  </div>
+                )}
+                
+                {!printerSettings.defaultPrinterName && availablePrinters.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                      ⚠️ No Default Printer
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                      When you print, a printer selection dialog will appear for you to choose a printer each time.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

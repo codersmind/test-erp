@@ -6,7 +6,9 @@ export interface ElectronPrinter {
       displayName: string
       description: string
       status: number
+      statusText?: string
       isDefault: boolean
+      isAvailable?: boolean
     }>
     error?: string
   }>
