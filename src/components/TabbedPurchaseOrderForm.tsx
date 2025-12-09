@@ -5,6 +5,7 @@ import { GripVertical } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
 
 import { TabSystem, type Tab } from './TabSystem'
+import { useFormNavigation } from '../hooks/useFormNavigation'
 import { useCreatePurchaseOrder } from '../hooks/usePurchaseOrders'
 import { CustomerQuickCreateModal } from './CustomerQuickCreateModal'
 import { ProductQuickCreateModal } from './ProductQuickCreateModal'
@@ -383,8 +384,11 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
               dragOverIndexRef.current[tabData.id] = null
             }
 
+            const formRef = useRef<HTMLFormElement>(null)
+            useFormNavigation(formRef)
+
             return (
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">Supplier</label>
                   <div className="mt-1">
@@ -740,7 +744,7 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
                     </button>
                   </div>
                 </div>
-              </form>
+                </form>
             )
           }}
         </Formik>
