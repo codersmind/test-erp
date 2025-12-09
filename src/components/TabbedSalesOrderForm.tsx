@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Formik, FieldArray } from 'formik'
 import { nanoid } from 'nanoid'
 import { GripVertical } from 'lucide-react'
+import { useHotkeys } from 'react-hotkeys-hook'
 
 import { TabSystem, type Tab } from './TabSystem'
 import { useCreateSalesOrder } from '../hooks/useSalesOrders'
@@ -193,6 +194,67 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
     setActiveTabId(tabId)
   }
 
+  const handleNextTab = () => {
+    if (tabs.length <= 1) return
+    const currentIndex = tabs.findIndex((t) => t.id === activeTabId)
+    const nextIndex = currentIndex < tabs.length - 1 ? currentIndex + 1 : 0
+    setActiveTabId(tabs[nextIndex].id)
+  }
+
+  const handlePreviousTab = () => {
+    if (tabs.length <= 1) return
+    const currentIndex = tabs.findIndex((t) => t.id === activeTabId)
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : tabs.length - 1
+    setActiveTabId(tabs[prevIndex].id)
+  }
+
+  const handleCloseCurrentTab = () => {
+    if (activeTabId) {
+      handleCloseTab(activeTabId)
+    }
+  }
+
+  // Keyboard shortcuts
+  useHotkeys(
+    'ctrl+t, cmd+t',
+    (e: KeyboardEvent) => {
+      e.preventDefault()
+      handleAddTab()
+    },
+    { enableOnFormTags: false },
+    [tabs, initialTaxSettings, defaultRoundFigure]
+  )
+
+  useHotkeys(
+    'ctrl+w, cmd+w',
+    (e: KeyboardEvent) => {
+      e.preventDefault()
+      handleCloseCurrentTab()
+    },
+    { enableOnFormTags: false },
+    [activeTabId, tabs]
+  )
+
+  useHotkeys(
+    'ctrl+tab',
+    (e: KeyboardEvent) => {
+      e.preventDefault()
+      handleNextTab()
+    },
+    { enableOnFormTags: false },
+    [tabs, activeTabId]
+  )
+
+  useHotkeys(
+    'ctrl+shift+tab',
+    (e: KeyboardEvent) => {
+      e.preventDefault()
+      handlePreviousTab()
+    },
+    { enableOnFormTags: false },
+    [tabs, activeTabId]
+  )
+
   const updateTabCustomer = (tabId: string, customerId: string, customerName: string) => {
     setTabs((prev) =>
       prev.map((tab) => (tab.id === tabId ? { ...tab, customerId, customerName } : tab))
@@ -303,6 +365,51 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
             // Store refs
             formikRefs.current[tabData.id] = { setFieldValue }
             formikValuesRefs.current[tabData.id] = values
+
+            // Keyboard shortcuts for this form
+            useHotkeys(
+              'ctrl+s, cmd+s',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                if (!isSubmitting && values.customerId) {
+                  handleSubmit()
+                }
+              },
+              { enableOnFormTags: ['input', 'textarea', 'select'] },
+              [isSubmitting, values.customerId, handleSubmit]
+            )
+
+            useHotkeys(
+              'ctrl+n, cmd+n',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                // This will be handled in FieldArray
+              },
+              { enableOnFormTags: false },
+              []
+            )
+
+            useHotkeys(
+              'ctrl+shift+c, cmd+shift+c',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                setActiveTabForModal(tabData.id)
+                setShowCustomerModal(true)
+              },
+              { enableOnFormTags: false },
+              [tabData.id]
+            )
+
+            useHotkeys(
+              'ctrl+shift+p, cmd+shift+p',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                setActiveTabForModal(tabData.id)
+                setShowProductModal(true)
+              },
+              { enableOnFormTags: false },
+              [tabData.id]
+            )
 
             // Sync form values back to tab data whenever they change
             // Store current values in ref for cleanup

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Formik, FieldArray } from 'formik'
 import { nanoid } from 'nanoid'
 import { GripVertical } from 'lucide-react'
+import { useHotkeys } from 'react-hotkeys-hook'
 
 import { TabSystem, type Tab } from './TabSystem'
 import { useCreatePurchaseOrder } from '../hooks/usePurchaseOrders'
@@ -264,6 +265,51 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
             formikRefs.current[tabData.id] = { setFieldValue }
             formikValuesRefs.current[tabData.id] = values
 
+            // Keyboard shortcuts for this form
+            useHotkeys(
+              'ctrl+s, cmd+s',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                if (!isSubmitting && values.supplierId) {
+                  handleSubmit()
+                }
+              },
+              { enableOnFormTags: ['input', 'textarea', 'select'] },
+              [isSubmitting, values.supplierId, handleSubmit]
+            )
+
+            useHotkeys(
+              'ctrl+n, cmd+n',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                // This will be handled in FieldArray
+              },
+              { enableOnFormTags: false },
+              []
+            )
+
+            useHotkeys(
+              'ctrl+shift+c, cmd+shift+c',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                setActiveTabForModal(tabData.id)
+                setShowSupplierModal(true)
+              },
+              { enableOnFormTags: false },
+              [tabData.id]
+            )
+
+            useHotkeys(
+              'ctrl+shift+p, cmd+shift+p',
+              (e: KeyboardEvent) => {
+                e.preventDefault()
+                setActiveTabForModal(tabData.id)
+                setShowProductModal(true)
+              },
+              { enableOnFormTags: false },
+              [tabData.id]
+            )
+
             // Sync form values back to tab data whenever they change
             // Store current values in ref for cleanup
             const currentValuesRef = useRef(values)
@@ -360,6 +406,17 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
 
                 <FieldArray name="lineItems">
                   {({ push, remove, move }) => {
+                    // Add item shortcut
+                    useHotkeys(
+                      'ctrl+n, cmd+n',
+                      (e: KeyboardEvent) => {
+                        e.preventDefault()
+                        push({ productId: '', quantity: 1, unitCost: 0 })
+                      },
+                      { enableOnFormTags: false },
+                      [push]
+                    )
+
                     const handleDragStart = (e: React.DragEvent, index: number) => {
                       draggedIndexRef.current[tabData.id] = index
                       e.dataTransfer.effectAllowed = 'move'

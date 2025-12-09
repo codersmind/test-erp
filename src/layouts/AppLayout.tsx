@@ -1,6 +1,11 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useHotkeys } from 'react-hotkeys-hook'
+
+import { HelpCircle } from 'lucide-react'
 
 import { ManualSyncButton } from '../components/ManualSyncButton'
+import { KeyboardShortcutsHelp } from '../components/KeyboardShortcutsHelp'
 import { SyncStatus } from '../components/SyncStatus'
 import { ThemeToggleButton } from '../components/ThemeToggleButton'
 import { SettingsInitializer } from '../components/SettingsInitializer'
@@ -21,6 +26,23 @@ const navigation = [
 
 export const AppLayout = () => {
   const { user, isLoading, signIn, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+
+  // Global navigation keyboard shortcuts
+  useHotkeys('ctrl+1, cmd+1', () => navigate('/'), { enableOnFormTags: false }, [navigate])
+  useHotkeys('ctrl+2, cmd+2', () => navigate('/customers'), { enableOnFormTags: false }, [navigate])
+  useHotkeys('ctrl+3, cmd+3', () => navigate('/products'), { enableOnFormTags: false }, [navigate])
+  useHotkeys('ctrl+4, cmd+4', () => navigate('/sales'), { enableOnFormTags: false }, [navigate])
+  useHotkeys('ctrl+5, cmd+5', () => navigate('/purchases'), { enableOnFormTags: false }, [navigate])
+  useHotkeys('ctrl+6, cmd+6', () => navigate('/import-export'), { enableOnFormTags: false }, [navigate])
+  useHotkeys('ctrl+7, cmd+7', () => navigate('/settings'), { enableOnFormTags: false }, [navigate])
+  
+  // Show keyboard shortcuts help
+  useHotkeys('shift+?', (e: KeyboardEvent) => {
+    e.preventDefault()
+    setShowShortcutsHelp(true)
+  }, { enableOnFormTags: false }, [])
 
   if (isLoading) {
     return (
@@ -138,6 +160,15 @@ export const AppLayout = () => {
           </div>
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowShortcutsHelp(true)}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                title="Keyboard Shortcuts (Shift+?)"
+                aria-label="Show keyboard shortcuts"
+              >
+                <HelpCircle className="h-5 w-5" />
+              </button>
               <ManualSyncButton />
               <ThemeToggleButton />
             </div>
@@ -220,6 +251,7 @@ export const AppLayout = () => {
         </main>
       </div>
       <UpdateStatus />
+      <KeyboardShortcutsHelp isOpen={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
     </div>
   )
 }
