@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { Customer, CustomerType, Product } from '../db/schema'
+import type { CustomerType } from '../db/schema'
 import { createCustomer, createProduct } from '../db/localDataService'
 import { nanoid } from 'nanoid'
 
@@ -121,7 +121,6 @@ export const importCustomers = async (
         const address = row.address ? String(row.address).trim() : undefined
         const state = row.state ? String(row.state).trim() : undefined
         const gst = row.gst ? String(row.gst).trim() : undefined
-        const balance = row.balance ? parseFloat(String(row.balance)) || 0 : 0
         const notes = row.notes ? String(row.notes).trim() : undefined
 
         await createCustomer({
@@ -202,7 +201,6 @@ export const importProducts = async (
         const defaultDiscount = row.defaultdiscount ? parseFloat(String(row.defaultdiscount)) || 0 : 0
         const defaultDiscountType = (row.defaultdiscounttype || 'amount').toString().toLowerCase().includes('percentage') ? 'percentage' : 'amount'
         const unitId = row.unitid ? String(row.unitid).trim() : undefined
-        const stockOnHand = row.stockonhand ? parseFloat(String(row.stockonhand)) || 0 : 0
         const reorderLevel = row.reorderlevel ? parseFloat(String(row.reorderlevel)) : undefined
 
         await createProduct({

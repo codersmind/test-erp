@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { searchCustomers } from '../db/localDataService'
+import { searchCustomers, getCustomer } from '../db/localDataService'
 import type { Customer, CustomerType } from '../db/schema'
 
 interface LazyCustomerPickerProps {
@@ -24,6 +24,27 @@ export const LazyCustomerPicker = ({
   const [customers, setCustomers] = useState<Customer[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+
+  // Load customer when value exists but not in customers list
+  useEffect(() => {
+    if (value && !customers.find((c) => c.id === value)) {
+      const loadCustomer = async () => {
+        try {
+          const customer = await getCustomer(value)
+          if (customer) {
+            // Add to customers array if not already there
+            setCustomers((prev) => {
+              if (prev.find((c) => c.id === value)) return prev
+              return [customer, ...prev]
+            })
+          }
+        } catch (error) {
+          console.error('Failed to load customer:', error)
+        }
+      }
+      loadCustomer()
+    }
+  }, [value]) // Remove customers from deps to avoid infinite loop
 
   useEffect(() => {
     if (!isOpen) return
