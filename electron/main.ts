@@ -1,8 +1,10 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const { join, resolve } = require('node:path')
 const { createServer } = require('http')
-const { readFileSync, existsSync } = require('fs')
+const { readFileSync, existsSync, writeFileSync } = require('fs')
 const { extname } = require('path')
+const net = require('net')
+const { execSync, exec } = require('child_process')
 
 // Handle Squirrel events (required for Squirrel.Windows installer)
 // This MUST be at the very top before any app initialization
@@ -490,22 +492,246 @@ try {
 // === Environment Variables ===
 // Only use dev server URL if explicitly set (not in production builds)
 // In production, process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL is undefined
-const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
-// const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
+// const MAIN_WINDOW_VITE_DEV_SERVER_URL = 'http://localhost:5173/';
+const MAIN_WINDOW_VITE_DEV_SERVER_URL = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL
 const MAIN_WINDOW_VITE_NAME = process.env.MAIN_WINDOW_VITE_NAME || 'main_window'
 const MAIN_WINDOW_PRELOAD_VITE_ENTRY = process.env.MAIN_WINDOW_PRELOAD_VITE_ENTRY
 
 // Local HTTP server for production (required for Firebase Auth)
+// IMPORTANT: Port persistence is critical to preserve IndexedDB and auth state.
+// When the port changes, the origin changes (e.g., localhost:5174 vs localhost:5175),
+// which causes IndexedDB, localStorage, and cookies to be treated as different origins.
+// This results in data loss and users appearing logged out.
+// Solution: Persist the port number so the same port is used across app restarts.
 let localServer: any = null
-let localServerPort = 5174 // Use a different port than dev server
+const DEFAULT_PORT = 5174 // Default port (use a different port than dev server)
 const MAX_PORT_RETRIES = 10 // Maximum number of port retry attempts
+const PORT_CONFIG_FILE = 'port-config.json' // File to store the port number
+
+// Check if a port is available
+const isPortAvailable = (port: number): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    
+    server.listen(port, 'localhost', () => {
+      server.once('close', () => {
+        resolve(true)
+      })
+      server.close()
+    })
+    
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(false)
+      } else {
+        resolve(false)
+      }
+    })
+  })
+}
+
+// Get the process ID (PID) using a specific port on Windows
+const getProcessUsingPort = (port: number): Promise<{ pid: number; name: string } | null> => {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      resolve(null)
+      return
+    }
+
+    try {
+      // Use netstat to find the process using the port
+      const command = `netstat -ano | findstr :${port}`
+      const output = execSync(command, { encoding: 'utf-8', timeout: 2000 })
+      
+      // Parse output: TCP    0.0.0.0:5174    0.0.0.0:0    LISTENING    12345
+      const lines = output.trim().split('\n')
+      for (const line of lines) {
+        if (line.includes('LISTENING')) {
+          const parts = line.trim().split(/\s+/)
+          const pid = parseInt(parts[parts.length - 1], 10)
+          
+          if (pid && !isNaN(pid)) {
+            // Get process name
+            try {
+              const tasklistCommand = `tasklist /FI "PID eq ${pid}" /FO CSV /NH`
+              const tasklistOutput = execSync(tasklistCommand, { encoding: 'utf-8', timeout: 2000 })
+              const tasklistMatch = tasklistOutput.match(/"([^"]+)"/)
+              const processName = tasklistMatch ? tasklistMatch[1] : `PID ${pid}`
+              
+              resolve({ pid, name: processName })
+              return
+            } catch (e) {
+              resolve({ pid, name: `PID ${pid}` })
+              return
+            }
+          }
+        }
+      }
+      
+      resolve(null)
+    } catch (error: any) {
+      // Port might not be in use or command failed
+      resolve(null)
+    }
+  })
+}
+
+// Check if a process is safe to kill (not a critical system process)
+const isProcessSafeToKill = (processName: string, pid: number): boolean => {
+  const processNameLower = processName.toLowerCase()
+  
+  // List of critical system processes that should NEVER be killed
+  const criticalProcesses = [
+    'csrss.exe',
+    'dwm.exe',
+    'lsass.exe',
+    'services.exe',
+    'smss.exe',
+    'svchost.exe',
+    'system',
+    'winlogon.exe',
+    'wininit.exe',
+    'spoolsv.exe',
+    'explorer.exe', // User might lose desktop
+  ]
+  
+  // Check if it's a critical process
+  if (criticalProcesses.some(critical => processNameLower.includes(critical))) {
+    return false
+  }
+  
+  // Check if PID is too low (system processes usually have low PIDs)
+  if (pid < 100) {
+    return false
+  }
+  
+  return true
+}
+
+// Kill a process by PID on Windows
+const killProcess = (pid: number): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      resolve(false)
+      return
+    }
+
+    try {
+      exec(`taskkill /F /PID ${pid}`, { timeout: 5000 }, (error: any) => {
+        if (error) {
+          console.error(`Failed to kill process ${pid}:`, error.message)
+          resolve(false)
+        } else {
+          console.log(`✓ Successfully killed process ${pid}`)
+          resolve(true)
+        }
+      })
+    } catch (error: any) {
+      console.error(`Error killing process ${pid}:`, error.message)
+      resolve(false)
+    }
+  })
+}
+
+// Get the persisted port number from config file, or find an available port
+// CRITICAL: Always tries to use saved port first to preserve IndexedDB data
+// Only if binding actually fails do we switch to a new port
+const getPersistedPort = async (): Promise<number> => {
+  let savedPort: number | null = null
+  
+  try {
+    const userDataPath = app.getPath('userData')
+    const configPath = join(userDataPath, PORT_CONFIG_FILE)
+    
+    if (existsSync(configPath)) {
+      const configContent = readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(configContent)
+      if (config.port && typeof config.port === 'number' && config.port >= 1024 && config.port <= 65535) {
+        savedPort = config.port
+        console.log(`Found saved port: ${savedPort} (your IndexedDB data is on this port)`)
+      }
+    }
+  } catch (error: any) {
+    console.warn('Failed to read persisted port config:', error.message)
+  }
+  
+  // CRITICAL: If we have a saved port, we MUST try to use it first
+  // Even if it appears busy, we'll attempt to bind to it
+  // The actual server.listen() will handle the error if it's truly unavailable
+  // This maximizes the chance of preserving IndexedDB data
+  if (savedPort !== null) {
+    const available = await isPortAvailable(savedPort)
+    if (available) {
+      console.log(`✓ Saved port ${savedPort} is available, using it (preserves IndexedDB data)`)
+      return savedPort
+    } else {
+      // Port appears busy, but we'll still try to use it
+      // This handles race conditions where port might become available
+      // The server.listen() error handler will show a dialog if binding fails
+      console.warn(`⚠ Saved port ${savedPort} appears busy, but will attempt to use it`)
+      console.warn(`   If binding fails, you'll be warned about data accessibility`)
+      return savedPort // Return it anyway, let startLocalServer handle the conflict
+    }
+  }
+  
+  // No saved port - find an available port starting from default
+  console.log(`No saved port found, finding available port starting from ${DEFAULT_PORT}...`)
+  let portToCheck = DEFAULT_PORT
+  let attempts = 0
+  
+  while (attempts < MAX_PORT_RETRIES) {
+    const available = await isPortAvailable(portToCheck)
+    if (available) {
+      console.log(`✓ Found available port: ${portToCheck}`)
+      // Save the new port immediately so it's used consistently
+      savePersistedPort(portToCheck)
+      return portToCheck
+    }
+    portToCheck++
+    attempts++
+  }
+  
+  // Fallback to default if we can't find an available port (shouldn't happen)
+  console.warn(`Could not find available port after ${MAX_PORT_RETRIES} attempts, using default ${DEFAULT_PORT}`)
+  return DEFAULT_PORT
+}
+
+// Save the port number to persist it across app restarts
+const savePersistedPort = (port: number): void => {
+  try {
+    const userDataPath = app.getPath('userData')
+    const configPath = join(userDataPath, PORT_CONFIG_FILE)
+    const config = { port, timestamp: Date.now() }
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    console.log(`Saved port ${port} to config file`)
+  } catch (error: any) {
+    console.error('Failed to save port config:', error.message)
+  }
+}
+
+// Initialize port from persisted value or find available port
+// This will be set asynchronously when the app is ready
+let localServerPort = DEFAULT_PORT
 
 // Start local HTTP server to serve static files in production
-const startLocalServer = (retryCount: number = 0): Promise<number> => {
-  return new Promise((resolvePromise, reject) => {
+// Uses persisted port to maintain consistent origin across app restarts
+// If the saved port is busy, finds a new available port and saves it
+const startLocalServer = async (retryCount: number = 0): Promise<number> => {
+  return new Promise(async (resolvePromise, reject) => {
     if (localServer) {
       resolvePromise(localServerPort)
       return
+    }
+
+    // On first call, get the persisted port (or find available one)
+    // This checks if saved port is available, and if not, finds a new one
+    if (retryCount === 0) {
+      try {
+        localServerPort = await getPersistedPort()
+      } catch (error: any) {
+        console.error('Failed to get persisted port:', error.message)
+        localServerPort = DEFAULT_PORT
+      }
     }
 
     // Check if we've exceeded the maximum retry limit
@@ -630,18 +856,159 @@ const startLocalServer = (retryCount: number = 0): Promise<number> => {
 
     localServer.listen(localServerPort, 'localhost', () => {
       console.log(`Local server started on http://localhost:${localServerPort}`)
+      // Save the port to persist it across app restarts
+      // This ensures IndexedDB and auth state are preserved
+      savePersistedPort(localServerPort)
       resolvePromise(localServerPort)
     })
 
-    localServer.on('error', (error: any) => {
+    localServer.on('error', async (error: any) => {
       if (error.code === 'EADDRINUSE') {
-        // Port in use, try next port
+        // Port is in use - this is CRITICAL for data preservation
+        // If this was our saved port, we're about to lose IndexedDB data
+        console.error(`❌ CRITICAL: Port ${localServerPort} is busy!`)
+        console.error(`   This means IndexedDB data on localhost:${localServerPort} may not be accessible`)
+        console.error(`   Another application is using this port`)
+        
+        // Check if we have a saved port and this is it
+        const userDataPath = app.getPath('userData')
+        const configPath = join(userDataPath, PORT_CONFIG_FILE)
+        let isSavedPort = false
+        try {
+          if (existsSync(configPath)) {
+            const configContent = readFileSync(configPath, 'utf-8')
+            const config = JSON.parse(configContent)
+            isSavedPort = config.port === localServerPort
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        if (isSavedPort) {
+          console.error(`   ⚠️  WARNING: This was your saved port with IndexedDB data!`)
+          console.error(`   ⚠️  Your data is stored on origin: http://localhost:${localServerPort}`)
+          console.error(`   ⚠️  Attempting to free the port...`)
+          
+          // Try to find and kill the process using the port
+          try {
+            const processInfo = await getProcessUsingPort(localServerPort)
+            
+            if (processInfo) {
+              const { pid, name } = processInfo
+              console.log(`   Found process using port: ${name} (PID: ${pid})`)
+              
+              // Check if it's safe to kill
+              if (isProcessSafeToKill(name, pid)) {
+                console.log(`   Process appears safe to kill, attempting to terminate...`)
+                
+                // Show confirmation dialog before killing (only on first retry)
+                if (retryCount === 0) {
+                  let userConfirmed = false
+                  
+                  if (mainWindow) {
+                    try {
+                      const result = await dialog.showMessageBox(mainWindow, {
+                        type: 'question',
+                        title: 'Port Conflict - Free Port?',
+                        message: `Port ${localServerPort} is being used by another application`,
+                        detail: `Your app data is stored on port ${localServerPort}, but it's being used by:\n\n` +
+                                `Process: ${name}\n` +
+                                `PID: ${pid}\n\n` +
+                                `To access your data, we can terminate this process.\n\n` +
+                                `Do you want to kill this process and free the port?`,
+                        buttons: ['Yes, Kill Process', 'No, Use Different Port', 'Cancel'],
+                        defaultId: 0,
+                        cancelId: 2,
+                      })
+                      
+                      if (result.response === 0) {
+                        // User chose to kill the process
+                        userConfirmed = true
+                      } else if (result.response === 2) {
+                        // User chose Cancel
+                        app.quit()
+                        return
+                      }
+                      // If response === 1, user chose to use different port (continue below)
+                    } catch (err) {
+                      // If dialog fails, proceed with killing (user might not see window yet)
+                      console.warn('Could not show dialog, proceeding with kill:', err)
+                      userConfirmed = true
+                    }
+                  } else {
+                    // Window not ready, proceed with kill automatically
+                    userConfirmed = true
+                  }
+                  
+                  if (userConfirmed) {
+                    const killed = await killProcess(pid)
+                    if (killed) {
+                      console.log(`   ✓ Process killed successfully, retrying port ${localServerPort}...`)
+                      // Wait a moment for port to be released
+                      await new Promise(resolve => setTimeout(resolve, 500))
+                      // Close current server attempt
+                      if (localServer) {
+                        localServer.close()
+                      }
+                      localServer = null
+                      // Retry with the same port
+                      startLocalServer(retryCount).then(resolvePromise).catch(reject)
+                      return
+                    } else {
+                      console.error(`   ✗ Failed to kill process, will use different port`)
+                    }
+                  }
+                }
+              } else {
+                console.warn(`   ⚠️  Process ${name} (PID: ${pid}) is a system process, cannot kill safely`)
+              }
+            } else {
+              console.warn(`   Could not identify process using port ${localServerPort}`)
+            }
+          } catch (err: any) {
+            console.error(`   Error trying to free port:`, err.message)
+          }
+          
+          // If we couldn't kill the process, show warning and use different port
+          if (retryCount === 0 && mainWindow) {
+            try {
+              await dialog.showMessageBox(mainWindow, {
+                type: 'warning',
+                title: 'Port Conflict - Data May Not Be Accessible',
+                message: `Port ${localServerPort} is being used by another application`,
+                detail: `Your app data (IndexedDB, login state) is stored on port ${localServerPort}, but another application is using that port.\n\n` +
+                        `The app will use a different port (${localServerPort + 1}), which means:\n` +
+                        `• Your previous data may not be accessible\n` +
+                        `• You may need to log in again\n\n` +
+                        `SOLUTION: Close the application using port ${localServerPort} and restart this app to access your data.`,
+                buttons: ['Continue Anyway', 'Cancel'],
+                defaultId: 0,
+                cancelId: 1,
+              }).then((result: any) => {
+                if (result.response === 1) {
+                  // User chose Cancel
+                  app.quit()
+                  return
+                }
+                // User chose Continue Anyway - proceed with new port
+              }).catch((err: any) => {
+                console.error('Error showing dialog:', err)
+                // Continue anyway if dialog fails
+              })
+            } catch (err) {
+              // If mainWindow is not ready yet, just log and continue
+              console.warn('Could not show dialog (window not ready):', err)
+            }
+          }
+        }
+        
         // Close the server first to properly release resources
         if (localServer) {
           localServer.close()
         }
         localServerPort++
         localServer = null
+        console.log(`   Trying next port: ${localServerPort}...`)
         // Recursively retry with incremented retry count
         startLocalServer(retryCount + 1).then(resolvePromise).catch(reject)
       } else {
