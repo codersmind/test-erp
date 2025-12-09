@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { CustomersPage } from './pages/CustomersPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { ImportExportPage } from './pages/ImportExportPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { PurchaseOrdersPage } from './pages/PurchaseOrdersPage'
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'products', element: <ProductsPage /> },
       { path: 'sales', element: <SalesOrdersPage /> },
       { path: 'purchases', element: <PurchaseOrdersPage /> },
+      { path: 'import-export', element: <ImportExportPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

@@ -15,6 +15,7 @@ const navigation = [
   { to: '/products', label: 'Products' },
   { to: '/sales', label: 'Sales orders' },
   { to: '/purchases', label: 'Purchase orders' },
+  { to: '/import-export', label: 'Import/Export' },
   { to: '/settings', label: 'Settings' },
 ]
 

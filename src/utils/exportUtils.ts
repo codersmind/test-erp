@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { Customer, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem } from '../db/schema'
+import type { Customer, Product, PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem } from '../db/schema'
 import { db } from '../db/database'
 
 export interface DateFilter {
@@ -431,6 +431,76 @@ export const exportPurchaseOrdersToCSV = async (
       new Date(order.updatedAt).toLocaleString(),
     ]
   })
+
+  const csvContent = [headers, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  link.setAttribute('href', url)
+  link.setAttribute('download', `${filename}.csv`)
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+// Export products to Excel
+export const exportProductsToExcel = async (
+  products: Product[],
+  filename: string = 'products',
+) => {
+  const worksheet = XLSX.utils.json_to_sheet(
+    products.map((product) => ({
+      'ID': product.id,
+      'SKU': product.sku,
+      'Barcode': product.barcode || '',
+      'Title': product.title,
+      'Description': product.description || '',
+      'MRP': product.mrp,
+      'Sale Price': product.salePrice,
+      'Cost': product.cost,
+      'Default Discount': product.defaultDiscount,
+      'Discount Type': product.defaultDiscountType,
+      'Unit ID': product.unitId || '',
+      'Stock On Hand': product.stockOnHand,
+      'Reorder Level': product.reorderLevel || '',
+      'Created At': new Date(product.createdAt).toLocaleString(),
+      'Updated At': new Date(product.updatedAt).toLocaleString(),
+    }))
+  )
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Products')
+  XLSX.writeFile(workbook, `${filename}.xlsx`)
+}
+
+// Export products to CSV
+export const exportProductsToCSV = async (
+  products: Product[],
+  filename: string = 'products',
+) => {
+  const headers = ['ID', 'SKU', 'Barcode', 'Title', 'Description', 'MRP', 'Sale Price', 'Cost', 'Default Discount', 'Discount Type', 'Unit ID', 'Stock On Hand', 'Reorder Level', 'Created At', 'Updated At']
+  const rows = products.map((product) => [
+    product.id,
+    product.sku,
+    product.barcode || '',
+    product.title,
+    product.description || '',
+    product.mrp,
+    product.salePrice,
+    product.cost,
+    product.defaultDiscount,
+    product.defaultDiscountType,
+    product.unitId || '',
+    product.stockOnHand,
+    product.reorderLevel || '',
+    new Date(product.createdAt).toLocaleString(),
+    new Date(product.updatedAt).toLocaleString(),
+  ])
 
   const csvContent = [headers, ...rows]
     .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
