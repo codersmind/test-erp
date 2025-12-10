@@ -52,6 +52,7 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
   const originalProductIdRef = useRef<Record<string, Record<number, string>>>({})
   const draggedIndexRef = useRef<Record<string, number | null>>({})
   const dragOverIndexRef = useRef<Record<string, number | null>>({})
+  const pushRef = useRef<Record<string, ((item: any) => void) | null>>({})
 
   // Load settings on mount
   useEffect(() => {
@@ -149,6 +150,7 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
     delete originalProductIdRef.current[tabId]
     delete draggedIndexRef.current[tabId]
     delete dragOverIndexRef.current[tabId]
+    delete pushRef.current[tabId]
   }
 
   // Navigation blocking
@@ -263,6 +265,7 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
           }}
         >
           {({ values, handleSubmit, isSubmitting, setFieldValue, errors, touched }) => {
+            // Store refs
             formikRefs.current[tabData.id] = { setFieldValue }
             formikValuesRefs.current[tabData.id] = values
 
@@ -283,10 +286,13 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
               'ctrl+n, cmd+n',
               (e: KeyboardEvent) => {
                 e.preventDefault()
-                // This will be handled in FieldArray
+                const push = pushRef.current[tabData.id]
+                if (push) {
+                  push({ productId: '', quantity: 1, unitCost: 0 })
+                }
               },
               { enableOnFormTags: false },
-              []
+              [tabData.id]
             )
 
             useHotkeys(
@@ -410,16 +416,8 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
 
                 <FieldArray name="lineItems">
                   {({ push, remove, move }) => {
-                    // Add item shortcut
-                    useHotkeys(
-                      'ctrl+n, cmd+n',
-                      (e: KeyboardEvent) => {
-                        e.preventDefault()
-                        push({ productId: '', quantity: 1, unitCost: 0 })
-                      },
-                      { enableOnFormTags: false },
-                      [push]
-                    )
+                    // Store push function in ref for keyboard shortcut handling
+                    pushRef.current[tabData.id] = push
 
                     const handleDragStart = (e: React.DragEvent, index: number) => {
                       draggedIndexRef.current[tabData.id] = index
