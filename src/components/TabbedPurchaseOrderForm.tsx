@@ -467,7 +467,7 @@ export const TabbedPurchaseOrderForm = ({ onOrderCreated }: TabbedPurchaseOrderF
                         </div>
                         <div className="space-y-3">
                           {lineItems.map((item, index) => {
-                            const stableKey = item.productId ? `product-${item.productId}` : `empty-${index}`
+                            const stableKey = item.productId ? `product-${item.productId}-${index}` : `empty-${index}`
                             const draggedIndex = draggedIndexRef.current[tabData.id]
                             const dragOverIndex = dragOverIndexRef.current[tabData.id]
                             return (

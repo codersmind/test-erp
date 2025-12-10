@@ -56,6 +56,7 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
   const originalProductIdRef = useRef<Record<string, Record<number, string>>>({})
   const draggedIndexRef = useRef<Record<string, number | null>>({})
   const dragOverIndexRef = useRef<Record<string, number | null>>({})
+  const pushRef = useRef<Record<string, ((item: any) => void) | null>>({})
 
   // Load settings on mount
   useEffect(() => {
@@ -163,6 +164,7 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
     delete originalProductIdRef.current[tabId]
     delete draggedIndexRef.current[tabId]
     delete dragOverIndexRef.current[tabId]
+    delete pushRef.current[tabId]
   }
 
   // Navigation blocking
@@ -384,10 +386,13 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
               'ctrl+n, cmd+n',
               (e: KeyboardEvent) => {
                 e.preventDefault()
-                // This will be handled in FieldArray
+                const push = pushRef.current[tabData.id]
+                if (push) {
+                  push({ productId: '', quantity: 1, unitPrice: 0, discount: 0 })
+                }
               },
               { enableOnFormTags: false },
-              []
+              [tabData.id]
             )
 
             useHotkeys(
@@ -557,6 +562,9 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
 
                 <FieldArray name="lineItems">
                   {({ push, remove, move }) => {
+                    // Store push function in ref for keyboard shortcut handling
+                    pushRef.current[tabData.id] = push
+
                     const handleDragStart = (e: React.DragEvent, index: number) => {
                       draggedIndexRef.current[tabData.id] = index
                       e.dataTransfer.effectAllowed = 'move'
@@ -605,7 +613,7 @@ export const TabbedSalesOrderForm = ({ onOrderCreated }: TabbedSalesOrderFormPro
                         </div>
                         <div className="space-y-3">
                           {lineItems.map((item, index) => {
-                            const stableKey = item.productId ? `product-${item.productId}` : `empty-${index}`
+                            const stableKey = item.productId ? `product-${item.productId}-${index}` : `empty-${index}`
                             const draggedIndex = draggedIndexRef.current[tabData.id]
                             const dragOverIndex = dragOverIndexRef.current[tabData.id]
                             return (
